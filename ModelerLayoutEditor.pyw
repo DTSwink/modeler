@@ -15,6 +15,9 @@ SCRIPT_PATH = Path(__file__).resolve()
 DATA_DIR = ROOT / "data"
 DEFAULT_LAYOUT_PATH = DATA_DIR / "default_layout.json"
 CURRENT_LAYOUT_PATH = DATA_DIR / "current_layout.json"
+APP_ICON_ICO_PATH = ROOT / "Build" / "desktop" / "ModelerDesktopIcon.ico"
+APP_ICON_PNG_PATH = ROOT / "Build" / "desktop" / "ModelerDesktopIconSource.png"
+APP_USER_MODEL_ID = "DTSwink.Modeler"
 CANVAS_BACKGROUND = "#ece5d6"
 MAP_LABEL_MODES = [
     "Hover",
@@ -51,9 +54,9 @@ LABEL_TEXT_TAG = "label_text"
 HANDLE_TAG = "selection_handle"
 FRAME_TAG = "world_frame"
 ZONE_TYPE_COLORS = {
-    "TentArea": "#d4934f",
-    "Infirmary": "#d4934f",
-    "TrainingArea": "#8f8f95",
+    "TentArea": "#b7b2ab",
+    "Infirmary": "#ede7df",
+    "TrainingArea": "#d4934f",
 }
 LOCATION_TYPE_COLORS = {
     "CommanderChair": "#f0c94f",
@@ -165,6 +168,32 @@ def semantic_location_color(location: dict) -> str:
     return LOCATION_TYPE_COLORS.get(location["type"], faction_color(location["faction"]))
 
 
+def configure_windows_app_identity() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass
+
+
+def apply_window_icon(window: tk.Tk) -> None:
+    if APP_ICON_ICO_PATH.exists():
+        try:
+            window.iconbitmap(default=str(APP_ICON_ICO_PATH))
+        except Exception:
+            pass
+    if APP_ICON_PNG_PATH.exists():
+        try:
+            icon_image = tk.PhotoImage(file=str(APP_ICON_PNG_PATH))
+            window._modeler_icon_image = icon_image
+            window.iconphoto(True, icon_image)
+        except Exception:
+            pass
+
+
 def today_stamp() -> str:
     return date.today().isoformat()
 
@@ -214,6 +243,7 @@ def point_to_segment_distance(point: dict, a: dict, b: dict) -> float:
 class LayoutEditorApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
+        apply_window_icon(self.root)
         self.window_title_base = "Modeler Layout Editor"
         self.root.title(self.window_title_base)
         self.root.geometry("1500x920")
@@ -1003,11 +1033,11 @@ class LayoutEditorApp:
     def hover_target_from_hit(self, hit: dict | None) -> tuple[str | None, str | None]:
         if not hit:
             return (None, None)
-        if hit["kind"].startswith("zone"):
+        if hit["kind"] == "zone":
             return ("zone", hit["id"])
-        if hit["kind"].startswith("point"):
+        if hit["kind"] == "point":
             return ("point", hit["id"])
-        if hit["kind"].startswith("wall"):
+        if hit["kind"] == "wall":
             return ("wall", hit["id"])
         return (None, None)
 
@@ -1462,7 +1492,7 @@ class LayoutEditorApp:
 
     def location_inner_radius_pixels(self, point: dict) -> float:
         outer_radius = self.point_visual_radius_pixels(point)
-        ring_thickness = clamp(outer_radius * 0.14, 2.0, 3.5)
+        ring_thickness = clamp(outer_radius * 0.18, 2.3, 4.0)
         return max(3.0, outer_radius - ring_thickness)
 
     def point_hit_radius_world(self, point: dict) -> float:
@@ -1806,6 +1836,7 @@ class LayoutEditorApp:
 
 def main() -> None:
     try:
+        configure_windows_app_identity()
         root = tk.Tk()
         style = ttk.Style()
         if "vista" in style.theme_names():

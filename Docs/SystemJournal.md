@@ -153,8 +153,10 @@ The editor currently supports:
 - Mouse-wheel zoom and right-drag panning.
 - Adjustable `Label Text Size` for on-map labels.
 - Hover-first labels so the map stays quiet until you inspect a zone or location.
+- Hover labels are attached to the main zone/location body, not the resize/rotate handles.
 - Location labels rendered as decluttered callouts instead of raw overlapping text.
 - Label badges, label text, and label connector lines raised above geometry so dense camp details stay readable while editing.
+- Tent areas now read as grey, infirmaries as light/white, and training areas as orange in the saved layouts and editor defaults.
 - A visible UI build stamp plus refresh-needed title state when the editor code on disk is newer than the running window.
 - An in-app `Refresh App` action plus `Ctrl+R` to relaunch into the newest editor build without a manual close/reopen cycle.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.

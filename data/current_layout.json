@@ -141,7 +141,7 @@
         "y": 975.9162797722079
       },
       "yawRadians": 0.0,
-      "color": "#d4934f",
+      "color": "#b7b2ab",
       "priority": 22,
       "faction": "Roman"
     },
@@ -158,7 +158,7 @@
         "y": 523.3789753775673
       },
       "yawRadians": 0.0,
-      "color": "#d4934f",
+      "color": "#ede7df",
       "priority": 23,
       "faction": "Roman"
     },
@@ -175,7 +175,7 @@
         "y": 468.8857097643704
       },
       "yawRadians": 0.0,
-      "color": "#8f8f95",
+      "color": "#d4934f",
       "priority": 23,
       "faction": "Roman"
     },
@@ -192,7 +192,7 @@
         "y": 920.0
       },
       "yawRadians": 0.0,
-      "color": "#d4934f",
+      "color": "#b7b2ab",
       "priority": 22,
       "faction": "Ottoman"
     },
@@ -209,7 +209,7 @@
         "y": 690.0
       },
       "yawRadians": 0.0,
-      "color": "#d4934f",
+      "color": "#ede7df",
       "priority": 23,
       "faction": "Ottoman"
     },
@@ -226,7 +226,7 @@
         "y": 650.0
       },
       "yawRadians": 0.0,
-      "color": "#8f8f95",
+      "color": "#d4934f",
       "priority": 23,
       "faction": "Ottoman"
     }

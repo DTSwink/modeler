@@ -140,7 +140,7 @@
         "y": 920
       },
       "yawRadians": 0,
-      "color": "#d4934f",
+      "color": "#b7b2ab",
       "priority": 22,
       "faction": "Roman"
     },
@@ -157,7 +157,7 @@
         "y": 690
       },
       "yawRadians": 0,
-      "color": "#d4934f",
+      "color": "#ede7df",
       "priority": 23,
       "faction": "Roman"
     },
@@ -174,7 +174,7 @@
         "y": 650
       },
       "yawRadians": 0,
-      "color": "#8f8f95",
+      "color": "#d4934f",
       "priority": 23,
       "faction": "Roman"
     },
@@ -191,7 +191,7 @@
         "y": 920
       },
       "yawRadians": 0,
-      "color": "#d4934f",
+      "color": "#b7b2ab",
       "priority": 22,
       "faction": "Ottoman"
     },
@@ -208,7 +208,7 @@
         "y": 690
       },
       "yawRadians": 0,
-      "color": "#d4934f",
+      "color": "#ede7df",
       "priority": 23,
       "faction": "Ottoman"
     },
@@ -225,7 +225,7 @@
         "y": 650
       },
       "yawRadians": 0,
-      "color": "#8f8f95",
+      "color": "#d4934f",
       "priority": 23,
       "faction": "Ottoman"
     }

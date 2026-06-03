@@ -39,7 +39,7 @@ Block 0A has been corrected to be engine-independent:
 - Native local layout editor with drag and inspector controls.
 - Repo-backed JSON save file for the current layout state.
 - Camp sub-areas for tents, infirmaries, and training grounds.
-- Hover-driven labels and clearer location markers so the map stays readable as agent detail grows.
+- Hover-driven labels on the main zone/location body plus clearer location markers so the map stays readable as agent detail grows.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
