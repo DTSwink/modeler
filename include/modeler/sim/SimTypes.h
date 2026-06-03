@@ -30,6 +30,7 @@ enum class ZoneType : std::uint8_t
 
 enum class PointType : std::uint8_t
 {
+	// PointType currently stores authored "location" semantics for the editor/runtime bridge.
 	CommanderChair,
 	Fire,
 	Basin,

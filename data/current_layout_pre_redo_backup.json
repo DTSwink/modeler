@@ -2,7 +2,7 @@
   "title": "Roman vs Ottoman - Block 0A",
   "block": "0A",
   "updated": "2026-06-03",
-  "stage": "Engine-independent simulation layout authoring",
+  "stage": "Engine-independent layout foundation",
   "summary": "This authored layout is the source data for the next simulation blocks. Every zone, wall, and location here becomes future runtime simulation input.",
   "footer": "This viewer is the live authoring surface for future simulation inputs. Hover zones and locations to inspect labels, then save to update the current simulation layout.",
   "root": {
@@ -21,7 +21,7 @@
   },
   "editor": {
     "snapToGrid": true,
-    "snapSize": 10,
+    "snapSize": 50,
     "labelFontSize": 8,
     "labelMode": "Hover"
   },
@@ -59,6 +59,23 @@
       "color": "#bca278",
       "priority": 10,
       "faction": "Roman"
+    },
+    {
+      "id": "zone-hallway",
+      "type": "Walkable",
+      "label": "Grass Hallway",
+      "center": {
+        "x": 12000,
+        "y": 4000
+      },
+      "size": {
+        "x": 6300,
+        "y": 1450
+      },
+      "yawRadians": 0.0,
+      "color": "#a8b96b",
+      "priority": 0,
+      "faction": "Neutral"
     },
     {
       "id": "zone-ottoman-camp",
@@ -127,108 +144,6 @@
       "color": "#4f8039",
       "priority": 0,
       "faction": "Neutral"
-    },
-    {
-      "id": "zone-roman-tent-area",
-      "type": "TentArea",
-      "label": "Roman Tent Area",
-      "center": {
-        "x": 6002.955726385968,
-        "y": 4000.0
-      },
-      "size": {
-        "x": 1393.1033050994072,
-        "y": 975.9162797722079
-      },
-      "yawRadians": 0.0,
-      "color": "#d4934f",
-      "priority": 22,
-      "faction": "Roman"
-    },
-    {
-      "id": "zone-roman-infirmary",
-      "type": "Infirmary",
-      "label": "Roman Infirmary",
-      "center": {
-        "x": 5550,
-        "y": 4800
-      },
-      "size": {
-        "x": 580.56372568183,
-        "y": 523.3789753775673
-      },
-      "yawRadians": 0.0,
-      "color": "#d4934f",
-      "priority": 23,
-      "faction": "Roman"
-    },
-    {
-      "id": "zone-roman-training-area",
-      "type": "TrainingArea",
-      "label": "Roman Training Area",
-      "center": {
-        "x": 6938.232956306275,
-        "y": 4804.506264672607
-      },
-      "size": {
-        "x": 1549.7916932748103,
-        "y": 468.8857097643704
-      },
-      "yawRadians": 0.0,
-      "color": "#8f8f95",
-      "priority": 23,
-      "faction": "Roman"
-    },
-    {
-      "id": "zone-ottoman-tent-area",
-      "type": "TentArea",
-      "label": "Ottoman Tent Area",
-      "center": {
-        "x": 16938.0,
-        "y": 4000.0
-      },
-      "size": {
-        "x": 1428.0,
-        "y": 920.0
-      },
-      "yawRadians": 0.0,
-      "color": "#d4934f",
-      "priority": 22,
-      "faction": "Ottoman"
-    },
-    {
-      "id": "zone-ottoman-infirmary",
-      "type": "Infirmary",
-      "label": "Ottoman Infirmary",
-      "center": {
-        "x": 18162.0,
-        "y": 3540.0
-      },
-      "size": {
-        "x": 884.0,
-        "y": 690.0
-      },
-      "yawRadians": 0.0,
-      "color": "#d4934f",
-      "priority": 23,
-      "faction": "Ottoman"
-    },
-    {
-      "id": "zone-ottoman-training-area",
-      "type": "TrainingArea",
-      "label": "Ottoman Training Area",
-      "center": {
-        "x": 18026.0,
-        "y": 4506.0
-      },
-      "size": {
-        "x": 1020.0,
-        "y": 650.0
-      },
-      "yawRadians": 0.0,
-      "color": "#8f8f95",
-      "priority": 23,
-      "faction": "Ottoman"
     }
   ],
   "walls": [
@@ -279,7 +194,7 @@
       },
       "b": {
         "x": 8100,
-        "y": 3780
+        "y": 3600
       },
       "thickness": 120,
       "faction": "Roman"
@@ -287,8 +202,8 @@
     {
       "id": "wall-roman-gate-south",
       "a": {
-        "x": 8090,
-        "y": 4210
+        "x": 8100,
+        "y": 4400
       },
       "b": {
         "x": 8100,
@@ -370,8 +285,8 @@
       "type": "CommanderChair",
       "faction": "Roman",
       "position": {
-        "x": 5990,
-        "y": 4100
+        "x": 6100,
+        "y": 4000
       },
       "radius": 275.51221946907174,
       "facingRadians": -0.040511685384175045,
@@ -383,8 +298,8 @@
       "type": "Fire",
       "faction": "Roman",
       "position": {
-        "x": 7610,
-        "y": 3200
+        "x": 7150,
+        "y": 3150
       },
       "radius": 163.81923985689312,
       "facingRadians": 1.5967212798701578,
@@ -396,8 +311,8 @@
       "type": "Basin",
       "faction": "Roman",
       "position": {
-        "x": 5990,
-        "y": 2990
+        "x": 5750,
+        "y": 3150
       },
       "radius": 90,
       "facingRadians": 1.5342707557342394,
@@ -409,7 +324,7 @@
       "type": "WatchTower",
       "faction": "Roman",
       "position": {
-        "x": 7900,
+        "x": 7850,
         "y": 4950
       },
       "radius": 868.6430668577385,
@@ -422,8 +337,8 @@
       "type": "SpawnPoint",
       "faction": "Roman",
       "position": {
-        "x": 8000,
-        "y": 7300
+        "x": 8800,
+        "y": 6450
       },
       "radius": 80,
       "facingRadians": 0.0,
@@ -528,8 +443,8 @@
       "type": "CommanderChair",
       "faction": "Roman",
       "position": {
-        "x": 5990,
-        "y": 4100
+        "x": 6100,
+        "y": 4000
       },
       "radius": 275.51221946907174,
       "facingRadians": -0.040511685384175045,
@@ -541,8 +456,8 @@
       "type": "Fire",
       "faction": "Roman",
       "position": {
-        "x": 7610,
-        "y": 3200
+        "x": 7150,
+        "y": 3150
       },
       "radius": 163.81923985689312,
       "facingRadians": 1.5967212798701578,
@@ -554,8 +469,8 @@
       "type": "Basin",
       "faction": "Roman",
       "position": {
-        "x": 5990,
-        "y": 2990
+        "x": 5750,
+        "y": 3150
       },
       "radius": 90,
       "facingRadians": 1.5342707557342394,
@@ -567,7 +482,7 @@
       "type": "WatchTower",
       "faction": "Roman",
       "position": {
-        "x": 7900,
+        "x": 7850,
         "y": 4950
       },
       "radius": 868.6430668577385,
@@ -580,8 +495,8 @@
       "type": "SpawnPoint",
       "faction": "Roman",
       "position": {
-        "x": 8000,
-        "y": 7300
+        "x": 8800,
+        "y": 6450
       },
       "radius": 80,
       "facingRadians": 0.0,

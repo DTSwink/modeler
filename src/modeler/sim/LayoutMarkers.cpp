@@ -20,7 +20,7 @@ std::string formatBlock0AValidation(const LayoutDraft& draft)
 	std::ostringstream out;
 	out << "[Sim Layout] Block 0A validation stub found "
 		<< summary.zoneCount << " zone marker(s), "
-		<< summary.pointCount << " point marker(s), and "
+		<< summary.pointCount << " location marker(s), and "
 		<< summary.wallCount << " wall marker(s). "
 		<< "Full validation arrives in Block 0B.";
 

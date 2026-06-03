@@ -39,7 +39,7 @@ Block 0A has been corrected to be engine-independent:
 - Native local layout editor with drag and inspector controls.
 - Repo-backed JSON save file for the current layout state.
 - Camp sub-areas for tents, infirmaries, and training grounds.
-- Adaptive label density and decluttered on-map callouts for readability at whole-scene scale.
+- Hover-driven labels and clearer location markers so the map stays readable as agent detail grows.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -48,11 +48,11 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 ## Test
 
 1. Open `ModelerLayoutEditor.pyw` and confirm the native editor window opens.
-2. Drag a zone, point, and wall endpoint to confirm direct manipulation works.
-3. Confirm watchtower and other point clicks feel tight to the visible marker rather than a large hidden radius.
+2. Drag a zone, location, and wall endpoint to confirm direct manipulation works.
+3. Confirm watchtower and other location clicks feel tight to the visible marker rather than a large hidden radius.
 4. Confirm dragging one zone corner only moves the adjacent edges while the opposite corner stays fixed.
-5. Confirm the full-scene view is readable: major region labels stay visible, dense camp detail labels stay quieter until you zoom in or select them.
-6. Confirm `Label Density` changes what is shown on the map.
+5. Confirm the map stays visually quiet until you hover a zone or location, and that hovered labels appear above geometry.
+6. Confirm `Label Mode` is set to `Hover` for the current saved layouts.
 7. Confirm `Ctrl+Z` undoes the last layout edit.
 8. Confirm mouse-wheel zoom and right-drag panning work on the map.
 9. Change `Label Text Size` and confirm the on-map text updates.

@@ -90,7 +90,7 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 - `WatchTowerVision`
 - `SpawnArea`
 
-`PointType` identifies semantic point markers:
+`PointType` identifies semantic location markers:
 
 - `CommanderChair`
 - `Fire`
@@ -119,7 +119,7 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 `PointMarker`
 
-- Represents semantic points such as fire, basin, gate, chair, watchtower, and spawn point.
+- Represents authored semantic locations such as fire, basin, gate, chair, watchtower, and spawn point.
 - Key fields: `type`, `faction`, `id`, `position`, `facingRadians`, `radius`, `slotCount`.
 
 `WallMarker`
@@ -129,12 +129,12 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 `LayoutDraft`
 
-- Holds root settings plus arrays of zones, points, and walls.
+- Holds root settings plus arrays of zones, authored locations, and walls.
 - This is the current draft-level data container. Block 0B should turn this into validated/baked runtime layout data.
 
 ## Current Validation Stub
 
-`summarizeLayout` counts zones, points, and walls.
+`summarizeLayout` counts zones, locations, and walls.
 
 `formatBlock0AValidation` returns a human-readable Block 0A message with those counts. Real layout validation belongs to Block 0B.
 
@@ -144,16 +144,16 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 The editor currently supports:
 
-- Direct dragging of zones, points, and whole walls.
+- Direct dragging of zones, locations, and whole walls.
 - Zone resize handles with opposite-corner anchoring.
-- Point radius and facing handles.
+- Location radius and facing handles.
 - Wall endpoint handles.
 - Exact numeric edits through the inspector.
 - `Ctrl+Z` undo for layout and inspector changes.
 - Mouse-wheel zoom and right-drag panning.
 - Adjustable `Label Text Size` for on-map labels.
-- Adaptive label density so full-scene views show major geography first and dense local detail later.
-- Point labels rendered as decluttered callouts instead of raw overlapping text.
+- Hover-first labels so the map stays quiet until you inspect a zone or location.
+- Location labels rendered as decluttered callouts instead of raw overlapping text.
 - Label badges, label text, and label connector lines raised above geometry so dense camp details stay readable while editing.
 - A visible UI build stamp plus refresh-needed title state when the editor code on disk is newer than the running window.
 - An in-app `Refresh App` action plus `Ctrl+R` to relaunch into the newest editor build without a manual close/reopen cycle.
@@ -165,7 +165,7 @@ The editor currently supports:
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
-The important UI rule is that whole-scene readability wins over showing every label at once. Smaller camp-internal labels can hide until selection or zoom if that keeps the authored scene understandable.
+The important UI rule is that whole-scene readability wins over showing every label at once. The current default is hover-driven labels, so the authored map stays legible before we add moving agents on top.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
@@ -190,25 +190,27 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 ## Current Test Workflow
 
 1. Open `ModelerLayoutEditor.pyw`.
-2. Drag a zone, a point, and a wall endpoint.
-3. Confirm point clicks are tight to the visible marker, especially for enlarged watchtowers.
+2. Drag a zone, a location, and a wall endpoint.
+3. Confirm location clicks are tight to the visible marker, especially for enlarged watchtowers.
 4. Confirm dragging one zone corner keeps the opposite corner fixed instead of resizing symmetrically.
-5. Confirm the full-scene view keeps major region labels readable without camp internals turning into a text pile.
-6. Confirm `Label Density` changes label visibility as expected.
+5. Confirm the map stays visually quiet until you hover a zone or location.
+6. Confirm hovered labels appear above geometry instead of being clipped by nearby shapes.
 7. Confirm `Ctrl+Z` reverses the last layout change.
 8. Confirm mouse-wheel zoom and right-drag panning work.
 9. Change `Label Text Size` and confirm the label rendering updates.
 10. Confirm tent, infirmary, and training sub-areas exist inside each camp.
-11. Confirm the old grass hallway zone is absent.
-12. Click `Save Layout` or press `Ctrl+S`.
-13. Confirm those edits appear in `data/current_layout.json`.
-14. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
-15. Open `RunBlock0ASmoke.exe`.
-16. The script initializes the Visual Studio C++ toolchain.
-17. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-18. It runs the produced smoke test.
-19. The smoke test creates one zone, one point, and one wall.
-20. It asserts the summary counts and prints the Block 0A validation message.
+11. Confirm training areas render grey while tent areas and infirmaries render orange.
+12. Confirm basin locations use blue centers, fire uses orange-red, watchtower uses purple, commander uses yellow, and gate locations stay transparent inside the white ring.
+13. Confirm the old grass hallway zone is absent.
+14. Click `Save Layout` or press `Ctrl+S`.
+15. Confirm those edits appear in `data/current_layout.json`.
+16. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
+17. Open `RunBlock0ASmoke.exe`.
+18. The script initializes the Visual Studio C++ toolchain.
+19. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+20. It runs the produced smoke test.
+21. The smoke test creates one zone, one location, and one wall.
+22. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 

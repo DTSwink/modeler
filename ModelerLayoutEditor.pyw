@@ -17,6 +17,7 @@ DEFAULT_LAYOUT_PATH = DATA_DIR / "default_layout.json"
 CURRENT_LAYOUT_PATH = DATA_DIR / "current_layout.json"
 CANVAS_BACKGROUND = "#ece5d6"
 MAP_LABEL_MODES = [
+    "Hover",
     "Adaptive",
     "All",
     "Selected",
@@ -37,11 +38,30 @@ SMALL_ZONE_TYPES = {
     "TrainingArea",
     "Infirmary",
 }
+BACKGROUND_ZONE_TYPES = {
+    "Walkable",
+    "Blocked",
+    "Forest",
+    "Ocean",
+    "Lake",
+}
 LABEL_LINE_TAG = "label_line"
 LABEL_BG_TAG = "label_bg"
 LABEL_TEXT_TAG = "label_text"
 HANDLE_TAG = "selection_handle"
 FRAME_TAG = "world_frame"
+ZONE_TYPE_COLORS = {
+    "TentArea": "#d4934f",
+    "Infirmary": "#d4934f",
+    "TrainingArea": "#8f8f95",
+}
+LOCATION_TYPE_COLORS = {
+    "CommanderChair": "#f0c94f",
+    "Fire": "#eb6d3a",
+    "Basin": "#2f6dff",
+    "WatchTower": "#8257e5",
+    "Gate": "",
+}
 
 ZONE_TYPES = [
     "Walkable",
@@ -129,6 +149,22 @@ def blend_hex(color_a: str, color_b: str, weight_b: float) -> str:
     return rgb_to_hex(blended)
 
 
+def semantic_zone_color(zone_type: str, fallback: str) -> str:
+    return ZONE_TYPE_COLORS.get(zone_type, fallback)
+
+
+def faction_color(faction: str) -> str:
+    if faction == "Roman":
+        return "#2f6dff"
+    if faction == "Ottoman":
+        return "#c84836"
+    return "#7a6b56"
+
+
+def semantic_location_color(location: dict) -> str:
+    return LOCATION_TYPE_COLORS.get(location["type"], faction_color(location["faction"]))
+
+
 def today_stamp() -> str:
     return date.today().isoformat()
 
@@ -191,6 +227,8 @@ class LayoutEditorApp:
         self.dirty = False
         self.selected_kind = "zone"
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
+        self.hover_kind = None
+        self.hover_id = None
         self.drag_state = None
         self.pan_state = None
         self.view = None
@@ -227,7 +265,7 @@ class LayoutEditorApp:
         layout["editor"].setdefault("snapToGrid", True)
         layout["editor"].setdefault("snapSize", 50)
         layout["editor"].setdefault("labelFontSize", 12)
-        layout["editor"].setdefault("labelMode", "Adaptive")
+        layout["editor"].setdefault("labelMode", "Hover")
         layout.setdefault("root", {})
         layout["root"].setdefault("cellSize", 100)
         layout["root"].setdefault("gridSize", {"x": 240, "y": 80})
@@ -235,7 +273,10 @@ class LayoutEditorApp:
         layout["root"].setdefault("drawGrid", True)
         layout["root"].setdefault("drawLabels", True)
         layout.setdefault("zones", [])
+        if "points" not in layout and "locations" in layout:
+            layout["points"] = layout["locations"]
         layout.setdefault("points", [])
+        layout["locations"] = layout["points"]
         layout.setdefault("walls", [])
         layout.setdefault("summary", "Editable layout marker foundation.")
         layout.setdefault("footer", "Native local editor for the latest Modeler layout state.")
@@ -253,6 +294,7 @@ class LayoutEditorApp:
             zone.setdefault("yawRadians", 0.0)
             zone.setdefault("center", {"x": 0.0, "y": 0.0})
             zone.setdefault("size", {"x": 1000.0, "y": 1000.0})
+            zone["color"] = semantic_zone_color(zone["type"], zone["color"])
 
         for index, point in enumerate(layout["points"]):
             point.setdefault("id", f"point-{index + 1}")
@@ -350,7 +392,7 @@ class LayoutEditorApp:
         ttk.Button(view_frame, text="Zoom In", command=self.zoom_in).grid(row=1, column=2, sticky="ew")
         ttk.Label(view_frame, text="Zoom").grid(row=2, column=0, sticky="w", pady=(10, 0))
         ttk.Label(view_frame, textvariable=self.zoom_percent_var).grid(row=2, column=1, columnspan=2, sticky="w", pady=(10, 0))
-        ttk.Label(view_frame, text="Label Density").grid(row=3, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(view_frame, text="Label Mode").grid(row=3, column=0, sticky="w", pady=(10, 0))
         label_mode_combo = ttk.Combobox(view_frame, textvariable=self.label_mode_var, values=MAP_LABEL_MODES, state="readonly")
         label_mode_combo.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(10, 0))
         label_mode_combo.bind("<<ComboboxSelected>>", self.apply_world_settings)
@@ -384,7 +426,7 @@ class LayoutEditorApp:
 
         viewer_hint = ttk.Label(
             top_bar,
-            text="Click to select. Drag bodies to move, drag handles to reshape, scroll to zoom, right-drag to pan, and use the inspector for exact values. Labels declutter by zoom and selection. Use Refresh App to load the newest editor build.",
+            text="Click to select. Drag zones, locations, or walls directly on the map, scroll to zoom, right-drag to pan, and use the inspector for exact values. Use Refresh App to load the newest editor build.",
             wraplength=900,
             justify="left",
         )
@@ -408,7 +450,7 @@ class LayoutEditorApp:
         self.canvas.bind("<Button-4>", self.on_canvas_mousewheel)
         self.canvas.bind("<Button-5>", self.on_canvas_mousewheel)
         self.canvas.bind("<Motion>", self.on_canvas_motion)
-        self.canvas.bind("<Leave>", lambda _event: self.canvas.configure(cursor=""))
+        self.canvas.bind("<Leave>", self.on_canvas_leave)
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
         self.root.bind("<Control-s>", self.save_layout_now)
         self.root.bind("<Control-r>", self.refresh_app)
@@ -494,6 +536,8 @@ class LayoutEditorApp:
         self.layout = self._normalize_layout(snapshot["layout"])
         self.selected_kind = snapshot.get("selected_kind", "zone")
         self.selected_id = snapshot.get("selected_id")
+        self.hover_kind = None
+        self.hover_id = None
         self.ensure_valid_selection()
         self.dirty = self.layout != self.saved_layout
         self._sync_world_controls()
@@ -616,7 +660,7 @@ class LayoutEditorApp:
             self.layout["root"]["gridSize"]["y"] = max(1, int(float(self.grid_y_var.get() or 1)))
             self.layout["editor"]["snapSize"] = max(1, int(float(self.snap_size_var.get() or 1)))
             self.layout["editor"]["labelFontSize"] = max(8, int(float(self.label_font_size_var.get() or 8)))
-            self.layout["editor"]["labelMode"] = self.label_mode_var.get() if self.label_mode_var.get() in MAP_LABEL_MODES else "Adaptive"
+            self.layout["editor"]["labelMode"] = self.label_mode_var.get() if self.label_mode_var.get() in MAP_LABEL_MODES else "Hover"
             self.layout["root"]["drawGrid"] = bool(self.draw_grid_var.get())
             self.layout["root"]["drawLabels"] = bool(self.draw_labels_var.get())
             self.layout["editor"]["snapToGrid"] = bool(self.snap_enabled_var.get())
@@ -679,6 +723,9 @@ class LayoutEditorApp:
 
     def touch_and_save(self, message: str) -> None:
         self.layout["updated"] = today_stamp()
+        for zone in self.layout["zones"]:
+            zone["color"] = semantic_zone_color(zone["type"], zone["color"])
+        self.layout["locations"] = self.layout["points"]
         write_json(CURRENT_LAYOUT_PATH, self.layout)
         self.saved_layout = deep_copy(self.layout)
         self.dirty = False
@@ -749,7 +796,7 @@ class LayoutEditorApp:
         self.update_meta_and_title()
         selected = self.get_selected_item()
         if selected is None:
-            self.selection_var.set("No item selected. Click a marker on the map or choose one in the list.")
+            self.selection_var.set("Nothing selected. Click a zone, location, or wall on the map or choose one in the list.")
         elif self.selected_kind == "zone":
             self.selection_var.set(
                 f"{selected['label']} selected. Drag the zone body to move it, or drag a corner handle to resize from that corner while the opposite corner stays put. "
@@ -757,7 +804,7 @@ class LayoutEditorApp:
             )
         elif self.selected_kind == "point":
             self.selection_var.set(
-                f"{selected['label']} selected. Drag the point to move it, drag the east handle to change radius, and drag the facing handle to rotate it."
+                f"{selected['label']} selected. Drag the location to move it, drag the east handle to change radius, and drag the facing handle to rotate it."
             )
         else:
             self.selection_var.set(
@@ -775,7 +822,7 @@ class LayoutEditorApp:
             for zone in self.layout["zones"]:
                 self.tree.insert(zones_parent, "end", iid=f"zone:{zone['id']}", text=zone["label"])
 
-            points_parent = self.tree.insert("", "end", iid="group-point", text="Points", open=True)
+            points_parent = self.tree.insert("", "end", iid="group-point", text="Locations", open=True)
             for point in self.layout["points"]:
                 self.tree.insert(points_parent, "end", iid=f"point:{point['id']}", text=point["label"])
 
@@ -795,7 +842,7 @@ class LayoutEditorApp:
 
         selected = self.get_selected_item()
         if selected is None:
-            ttk.Label(self.inspector_body, text="Select a zone, point, or wall to edit its exact values.", wraplength=320, justify="left").pack(anchor="w")
+            ttk.Label(self.inspector_body, text="Select a zone, location, or wall to edit its exact values.", wraplength=320, justify="left").pack(anchor="w")
             return
 
         if self.selected_kind == "zone":
@@ -895,7 +942,7 @@ class LayoutEditorApp:
             zone["size"]["x"] = max(50.0, float(vars_map["width"].get()))
             zone["size"]["y"] = max(50.0, float(vars_map["height"].get()))
             zone["yawRadians"] = math.radians(float(vars_map["yaw"].get()))
-            zone["color"] = vars_map["color"].get().strip() or zone["color"]
+            zone["color"] = semantic_zone_color(zone["type"], vars_map["color"].get().strip() or zone["color"])
         except ValueError:
             self.status_var.set("Zone inspector ignored until the numbers are valid.")
             return
@@ -913,9 +960,9 @@ class LayoutEditorApp:
             point["facingRadians"] = math.radians(float(vars_map["facing"].get()))
             point["slotCount"] = max(0, int(float(vars_map["slotCount"].get())))
         except ValueError:
-            self.status_var.set("Point inspector ignored until the numbers are valid.")
+            self.status_var.set("Location inspector ignored until the numbers are valid.")
             return
-        self.commit_layout_change(before_state, "Edited point. Changes are not saved yet.")
+        self.commit_layout_change(before_state, "Edited location. Changes are not saved yet.")
 
     def _apply_wall_inspector(self, wall: dict, vars_map: dict[str, tk.StringVar]) -> None:
         before_state = self.capture_state()
@@ -938,6 +985,39 @@ class LayoutEditorApp:
                 return item
         return None
 
+    def get_item_by_kind_and_id(self, kind: str, item_id: str | None) -> dict | None:
+        if item_id is None or kind not in {"zone", "point", "wall"}:
+            return None
+        for item in self.layout[f"{kind}s"]:
+            if item["id"] == item_id:
+                return item
+        return None
+
+    def clear_selection(self) -> None:
+        self.selected_kind = "zone"
+        self.selected_id = None
+
+    def is_background_zone(self, zone: dict) -> bool:
+        return zone["type"] in BACKGROUND_ZONE_TYPES
+
+    def hover_target_from_hit(self, hit: dict | None) -> tuple[str | None, str | None]:
+        if not hit:
+            return (None, None)
+        if hit["kind"].startswith("zone"):
+            return ("zone", hit["id"])
+        if hit["kind"].startswith("point"):
+            return ("point", hit["id"])
+        if hit["kind"].startswith("wall"):
+            return ("wall", hit["id"])
+        return (None, None)
+
+    def set_hover_target(self, kind: str | None, item_id: str | None) -> bool:
+        if self.hover_kind == kind and self.hover_id == item_id:
+            return False
+        self.hover_kind = kind
+        self.hover_id = item_id
+        return True
+
     def on_tree_select(self, _event=None) -> None:
         if self.suppress_tree_event:
             return
@@ -956,7 +1036,7 @@ class LayoutEditorApp:
 
     def current_label_mode(self) -> str:
         mode = self.layout["editor"].get("labelMode", "Adaptive")
-        return mode if mode in MAP_LABEL_MODES else "Adaptive"
+        return mode if mode in MAP_LABEL_MODES else "Hover"
 
     def zone_area(self, zone: dict) -> float:
         return float(zone["size"]["x"]) * float(zone["size"]["y"])
@@ -965,6 +1045,9 @@ class LayoutEditorApp:
         if not self.layout["root"]["drawLabels"]:
             return False
         mode = self.current_label_mode()
+        is_hovered = self.hover_kind == "zone" and self.hover_id == zone["id"]
+        if mode == "Hover":
+            return is_hovered
         if mode == "All":
             return True
         is_selected = self.selected_kind == "zone" and self.selected_id == zone["id"]
@@ -982,6 +1065,9 @@ class LayoutEditorApp:
         if not self.layout["root"]["drawLabels"]:
             return False
         mode = self.current_label_mode()
+        is_hovered = self.hover_kind == "point" and self.hover_id == point["id"]
+        if mode == "Hover":
+            return is_hovered
         is_selected = self.selected_kind == "point" and self.selected_id == point["id"]
         if mode == "All":
             return True
@@ -1141,7 +1227,7 @@ class LayoutEditorApp:
         for point in visible_points:
             screen = self.world_to_canvas(point["position"])
             radius = self.point_visual_radius_pixels(point)
-            color = "#2f6dff" if point["faction"] == "Roman" else "#c84836" if point["faction"] == "Ottoman" else "#7a6b56"
+            color = semantic_location_color(point) or "#8a7d6a"
             badge_fill = blend_hex(color, CANVAS_BACKGROUND, 0.74)
             badge_outline = blend_hex(color, "#6c665b", 0.30)
             font_size = max(9, int(self.layout["editor"]["labelFontSize"]) - 1)
@@ -1335,19 +1421,39 @@ class LayoutEditorApp:
 
     def draw_point(self, point: dict) -> None:
         screen = self.world_to_canvas(point["position"])
-        color = "#2f6dff" if point["faction"] == "Roman" else "#c84836" if point["faction"] == "Ottoman" else "#7a6b56"
+        color = semantic_location_color(point)
+        arrow_color = color or "#7a6b56"
         radius = self.point_visual_radius_pixels(point)
-        outline = "white" if not (self.selected_kind == "point" and self.selected_id == point["id"]) else "#1f1a15"
-        outline_width = 2 if not (self.selected_kind == "point" and self.selected_id == point["id"]) else 3
-        self.canvas.create_oval(screen["x"] - radius, screen["y"] - radius, screen["x"] + radius, screen["y"] + radius, fill=color, outline=outline, width=outline_width)
+        is_selected = self.selected_kind == "point" and self.selected_id == point["id"]
+        outline = "#1f1a15" if is_selected else "#6c665b"
+        outline_width = 3 if is_selected else 2
+        self.canvas.create_oval(
+            screen["x"] - radius,
+            screen["y"] - radius,
+            screen["x"] + radius,
+            screen["y"] + radius,
+            fill="#ffffff",
+            outline=outline,
+            width=outline_width,
+        )
+        inner_radius = max(3.0, radius * 0.5)
+        if color:
+            self.canvas.create_oval(
+                screen["x"] - inner_radius,
+                screen["y"] - inner_radius,
+                screen["x"] + inner_radius,
+                screen["y"] + inner_radius,
+                fill=color,
+                outline="",
+            )
         facing_length = radius + max(16, point["radius"] * self.view["scale"] * 0.14)
         self.canvas.create_line(
             screen["x"],
             screen["y"],
             screen["x"] + math.cos(point["facingRadians"]) * facing_length,
             screen["y"] + math.sin(point["facingRadians"]) * facing_length,
-            fill=color,
-            width=2,
+            fill=arrow_color,
+            width=3 if is_selected else 2,
             arrow=tk.LAST,
         )
 
@@ -1490,8 +1596,22 @@ class LayoutEditorApp:
         self.canvas.focus_set()
         world_point = self.canvas_to_world({"x": event.x, "y": event.y})
         hit = self.hit_test(world_point)
+        hover_kind, hover_id = self.hover_target_from_hit(hit)
+        self.set_hover_target(hover_kind, hover_id)
         if not hit:
+            if self.selected_id is not None:
+                self.clear_selection()
+                self.status_var.set("Selection cleared.")
+                self.render_all()
             return
+
+        if hit["kind"] == "zone":
+            zone = self.get_item_by_kind_and_id("zone", hit["id"])
+            if zone is not None and self.is_background_zone(zone):
+                self.clear_selection()
+                self.status_var.set("Selection cleared.")
+                self.render_all()
+                return
 
         if hit["kind"].startswith("zone"):
             self.selected_kind = "zone"
@@ -1662,12 +1782,21 @@ class LayoutEditorApp:
             return
         world_point = self.canvas_to_world({"x": event.x, "y": event.y})
         hit = self.hit_test(world_point)
+        hover_kind, hover_id = self.hover_target_from_hit(hit)
+        hover_changed = self.set_hover_target(hover_kind, hover_id)
         if hit and hit["kind"] in {"zone-handle", "point-radius", "point-facing", "wall-endpoint"}:
             self.canvas.configure(cursor="crosshair")
         elif hit:
             self.canvas.configure(cursor="fleur")
         else:
             self.canvas.configure(cursor="")
+        if hover_changed:
+            self.render_canvas()
+
+    def on_canvas_leave(self, _event: tk.Event) -> None:
+        self.canvas.configure(cursor="")
+        if self.set_hover_target(None, None):
+            self.render_canvas()
 
 
 def main() -> None:

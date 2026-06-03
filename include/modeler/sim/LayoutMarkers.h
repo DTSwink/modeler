@@ -43,6 +43,7 @@ struct ZoneMarker
 
 struct PointMarker
 {
+	// Editor-facing "locations" are stored as PointMarker entries for now.
 	PointType type = PointType::RallyPoint;
 	Faction faction = Faction::Neutral;
 	std::string id;
@@ -64,6 +65,7 @@ struct LayoutDraft
 {
 	LayoutRootSettings root;
 	std::vector<ZoneMarker> zones;
+	// These point markers are authored locations in the top-down editor.
 	std::vector<PointMarker> points;
 	std::vector<WallMarker> walls;
 };
