@@ -2,6 +2,14 @@
 
 Fresh Unreal Engine 5.7 C++ project for the Roman vs Ottoman 2D agent simulation.
 
+## Start
+
+Open `Modeler.uproject` to start the Unreal project.
+
+On Windows, you can also double-click `StartModeler.bat`.
+
+For the ongoing architecture record, read `Docs/SystemJournal.md`.
+
 ## Current Stop Point
 
 Block 0A is implemented:
