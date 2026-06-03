@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import random
 import subprocess
 import sys
 import time
@@ -10,6 +9,9 @@ from datetime import date, datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+
+from editor_runtime import RomanSimulationRuntime, format_speed_label
+from editor_view_state import normalize_saved_view, read_saved_view, write_saved_view
 
 
 ROOT = Path(__file__).resolve().parent
@@ -56,14 +58,7 @@ LABEL_TEXT_TAG = "label_text"
 HANDLE_TAG = "selection_handle"
 FRAME_TAG = "world_frame"
 SIMULATION_FRAME_MS = 16
-SIMULATION_SPEED_OPTIONS = [
-    0.25,
-    0.5,
-    1.0,
-    2.0,
-    4.0,
-    8.0,
-]
+SIMULATION_SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 ROMAN_SIMULATION_ZONE_ID = "zone-roman-camp"
 ROMAN_AGENT_COUNT = 5
 SPACEBAR_TEXT_INPUT_CLASSES = {
@@ -222,19 +217,6 @@ def format_build_stamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
 
-def format_sim_time(seconds: float) -> str:
-    total_seconds = max(0.0, float(seconds))
-    minutes = int(total_seconds // 60.0)
-    remainder = total_seconds - minutes * 60.0
-    return f"{minutes:02d}:{remainder:04.1f}"
-
-
-def format_speed_label(multiplier: float) -> str:
-    if abs(multiplier - round(multiplier)) < 0.001:
-        return f"{int(round(multiplier))}x"
-    return f"{multiplier:g}x"
-
-
 def distance(a: dict, b: dict) -> float:
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
 
@@ -308,14 +290,14 @@ class LayoutEditorApp:
         self.sim_summary_var = tk.StringVar()
         self.sim_speed_var = tk.StringVar(value=format_speed_label(1.0))
         self.freeze_layout_var = tk.BooleanVar(value=False)
-        self.simulation_running = False
-        self.simulation_speed = 1.0
-        self.simulation_time_seconds = 0.0
         self.last_simulation_tick = time.perf_counter()
         self.spacebar_toggle_pending = False
-        self.sim_rng = random.Random(1337)
-        self.agents = self.build_initial_agents()
         self.restore_saved_view_state()
+        self.simulation = RomanSimulationRuntime(
+            self.layout,
+            spawn_zone_id=ROMAN_SIMULATION_ZONE_ID,
+            agent_count=ROMAN_AGENT_COUNT,
+        )
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -361,18 +343,7 @@ class LayoutEditorApp:
         layout.setdefault("stage", "Engine-independent layout editor")
         layout.setdefault("block", "0A")
         layout.setdefault("updated", today_stamp())
-        default_center = {
-            "x": float(layout["root"]["gridSize"]["x"] * layout["root"]["cellSize"]) * 0.5,
-            "y": float(layout["root"]["gridSize"]["y"] * layout["root"]["cellSize"]) * 0.5,
-        }
-        saved_view = layout["editor"].setdefault("savedView", {})
-        saved_view["zoom"] = clamp(float(saved_view.get("zoom", 1.0)), 0.35, 8.0)
-        saved_center = saved_view.setdefault("center", default_center)
-        if not isinstance(saved_center, dict):
-            saved_center = default_center
-            saved_view["center"] = saved_center
-        saved_center["x"] = float(saved_center.get("x", default_center["x"]))
-        saved_center["y"] = float(saved_center.get("y", default_center["y"]))
+        normalize_saved_view(layout)
 
         for index, zone in enumerate(layout["zones"]):
             zone.setdefault("id", f"zone-{index + 1}")
@@ -404,52 +375,6 @@ class LayoutEditorApp:
             wall.setdefault("b", {"x": 1000.0, "y": 0.0})
 
         return layout
-
-    def build_initial_agents(self) -> list[dict]:
-        zone = self.simulation_spawn_zone()
-        rng = random.Random(1337)
-        agents: list[dict] = []
-        for index in range(ROMAN_AGENT_COUNT):
-            position = self.random_point_in_zone(zone, rng, agents)
-            heading = rng.uniform(0.0, math.tau)
-            agents.append(
-                {
-                    "id": f"agent-roman-{index + 1}",
-                    "label": f"Roman Agent {index + 1}",
-                    "faction": "Roman",
-                    "position": position,
-                    "radius": 90.0,
-                    "headingRadians": heading,
-                    "targetHeadingRadians": heading,
-                    "moveSpeed": rng.uniform(145.0, 225.0),
-                    "turnRate": rng.uniform(1.4, 2.5),
-                    "decisionTimer": rng.uniform(0.35, 1.6),
-                }
-            )
-        return agents
-
-    def random_point_in_zone(self, zone: dict, rng: random.Random, existing_agents: list[dict] | None = None) -> dict:
-        margin = 180.0
-        half_x = max(140.0, zone["size"]["x"] * 0.5 - margin)
-        half_y = max(140.0, zone["size"]["y"] * 0.5 - margin)
-        best_point = deep_copy(zone["center"])
-        attempts = 16
-        for _ in range(attempts):
-            local = {
-                "x": rng.uniform(-half_x, half_x),
-                "y": rng.uniform(-half_y, half_y),
-            }
-            rotated = local_to_world(local, zone["yawRadians"])
-            candidate = {
-                "x": zone["center"]["x"] + rotated["x"],
-                "y": zone["center"]["y"] + rotated["y"],
-            }
-            if not existing_agents:
-                return candidate
-            if all(distance(candidate, agent["position"]) >= 220.0 for agent in existing_agents):
-                return candidate
-            best_point = candidate
-        return best_point
 
     def _build_ui(self) -> None:
         self.root.columnconfigure(0, weight=0)
@@ -668,26 +593,10 @@ class LayoutEditorApp:
         self.update_simulation_summary()
 
     def restore_saved_view_state(self) -> None:
-        saved_view = self.layout.get("editor", {}).get("savedView", {})
-        default_center = self.default_view_center()
-        saved_center = saved_view.get("center", default_center)
-        if not isinstance(saved_center, dict):
-            saved_center = default_center
-        self.view_zoom = clamp(float(saved_view.get("zoom", 1.0)), 0.35, 8.0)
-        self.view_center = {
-            "x": float(saved_center.get("x", default_center["x"])),
-            "y": float(saved_center.get("y", default_center["y"])),
-        }
+        self.view_zoom, self.view_center = read_saved_view(self.layout, self.default_view_center())
 
     def persist_saved_view_state(self) -> None:
-        self.layout.setdefault("editor", {})
-        self.layout["editor"]["savedView"] = {
-            "zoom": round(float(self.view_zoom), 4),
-            "center": {
-                "x": round(float(self.view_center["x"]), 2),
-                "y": round(float(self.view_center["y"]), 2),
-            },
-        }
+        write_saved_view(self.layout, self.view_zoom, self.view_center)
 
     def world_dimensions(self) -> tuple[float, float]:
         return (
@@ -718,7 +627,7 @@ class LayoutEditorApp:
 
     def ensure_valid_selection(self) -> None:
         if self.selected_kind == "agent" and self.selected_id is not None:
-            for agent in self.agents:
+            for agent in self.simulation.agents:
                 if agent["id"] == self.selected_id:
                     return
         if self.selected_kind in {"zone", "point", "wall"} and self.selected_id is not None:
@@ -740,7 +649,7 @@ class LayoutEditorApp:
         self.selected_id = snapshot.get("selected_id")
         self.hover_kind = None
         self.hover_id = None
-        self.clamp_all_agents_to_bounds()
+        self.simulation.attach_layout(self.layout)
         self.ensure_valid_selection()
         self.dirty = self.layout != self.saved_layout
         self._sync_world_controls()
@@ -766,28 +675,24 @@ class LayoutEditorApp:
         self.root.after(2500, self.poll_for_editor_code_update)
 
     def update_simulation_summary(self) -> None:
-        state_text = "Running" if self.simulation_running else "Paused"
-        freeze_suffix = " | Layout frozen" if self.freeze_layout_var.get() else ""
-        self.play_button_var.set("Pause" if self.simulation_running else "Play")
-        self.sim_summary_var.set(
-            f"{state_text} | Sim {format_sim_time(self.simulation_time_seconds)} | {len(self.agents)} Roman agents | {format_speed_label(self.simulation_speed)}{freeze_suffix}"
-        )
+        self.play_button_var.set("Pause" if self.simulation.running else "Play")
+        self.sim_summary_var.set(self.simulation.summary_text(freeze_layout=self.freeze_layout_var.get()))
 
     def apply_simulation_speed(self, _event=None) -> str | None:
         try:
-            self.simulation_speed = max(0.05, float(self.sim_speed_var.get().rstrip("x")))
+            self.simulation.speed_multiplier = max(0.05, float(self.sim_speed_var.get().rstrip("x")))
         except ValueError:
-            self.simulation_speed = 1.0
-            self.sim_speed_var.set(format_speed_label(self.simulation_speed))
+            self.simulation.speed_multiplier = 1.0
+            self.sim_speed_var.set(format_speed_label(self.simulation.speed_multiplier))
         self.update_simulation_summary()
         if _event is not None:
             return "break"
         return None
 
     def toggle_simulation(self) -> None:
-        self.simulation_running = not self.simulation_running
+        self.simulation.running = not self.simulation.running
         self.last_simulation_tick = time.perf_counter()
-        self.status_var.set("Simulation running across the map." if self.simulation_running else "Simulation paused.")
+        self.status_var.set("Simulation running across the map." if self.simulation.running else "Simulation paused.")
         self.update_simulation_summary()
         self.render_stats_and_labels()
 
@@ -803,81 +708,26 @@ class LayoutEditorApp:
         self.render_all()
 
     def simulation_spawn_zone(self) -> dict:
-        for zone in self.layout["zones"]:
-            if zone["id"] == ROMAN_SIMULATION_ZONE_ID:
-                return zone
-        for zone in self.layout["zones"]:
-            if zone["type"] == "Camp" and zone["faction"] == "Roman":
-                return zone
-        world_width, world_height = self.world_dimensions()
-        return {
-            "center": {"x": world_width * 0.5, "y": world_height * 0.5},
-            "size": {"x": world_width, "y": world_height},
-            "yawRadians": 0.0,
-        }
+        return self.simulation.spawn_zone()
 
     def clamp_agent_position(self, agent: dict, position: dict) -> tuple[dict, bool, bool]:
-        world_width, world_height = self.world_dimensions()
-        margin = max(110.0, agent["radius"] * 1.2)
-        max_x = max(margin, world_width - margin)
-        max_y = max(margin, world_height - margin)
-        clamped_position = {
-            "x": clamp(position["x"], margin, max_x),
-            "y": clamp(position["y"], margin, max_y),
-        }
-        hit_x = abs(clamped_position["x"] - position["x"]) > 0.001
-        hit_y = abs(clamped_position["y"] - position["y"]) > 0.001
-        return (clamped_position, hit_x, hit_y)
-
-    def wrap_angle(self, angle_radians: float) -> float:
-        return math.atan2(math.sin(angle_radians), math.cos(angle_radians))
-
-    def step_angle_towards(self, current: float, target: float, max_delta: float) -> float:
-        delta = self.wrap_angle(target - current)
-        if abs(delta) <= max_delta:
-            return target
-        return current + math.copysign(max_delta, delta)
+        return self.simulation.clamp_agent_position(agent, position)
 
     def on_simulation_frame(self) -> None:
         now = time.perf_counter()
         real_dt = min(0.08, max(0.0, now - self.last_simulation_tick))
         self.last_simulation_tick = now
         changed = False
-        if self.simulation_running and real_dt > 0.0:
-            changed = self.advance_simulation(real_dt * self.simulation_speed)
+        if self.simulation.running and real_dt > 0.0:
+            changed = self.advance_simulation(real_dt * self.simulation.speed_multiplier)
         if changed:
             self.render_canvas()
             self.render_stats_and_labels()
         self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
 
     def advance_simulation(self, sim_dt: float) -> bool:
-        if sim_dt <= 0.0:
-            return False
-        any_changed = False
-        self.simulation_time_seconds += sim_dt
         dragged_agent_id = self.drag_state.get("id") if self.drag_state and self.drag_state.get("type") == "move-agent" else None
-        for agent in self.agents:
-            if dragged_agent_id == agent["id"]:
-                continue
-            agent["decisionTimer"] -= sim_dt
-            if agent["decisionTimer"] <= 0.0:
-                agent["targetHeadingRadians"] = agent["headingRadians"] + self.sim_rng.uniform(-1.7, 1.7)
-                agent["decisionTimer"] = self.sim_rng.uniform(0.35, 1.4)
-            agent["headingRadians"] = self.step_angle_towards(
-                agent["headingRadians"],
-                agent["targetHeadingRadians"],
-                agent["turnRate"] * sim_dt,
-            )
-            proposed = {
-                "x": agent["position"]["x"] + math.cos(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
-                "y": agent["position"]["y"] + math.sin(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
-            }
-            clamped, hit_x, hit_y = self.clamp_agent_position(agent, proposed)
-            agent["position"] = clamped
-            if hit_x or hit_y:
-                agent["targetHeadingRadians"] = self.sim_rng.uniform(0.0, math.tau)
-                agent["decisionTimer"] = self.sim_rng.uniform(0.12, 0.35)
-            any_changed = True
+        any_changed = self.simulation.advance(sim_dt, dragged_agent_id=dragged_agent_id)
         self.update_simulation_summary()
         return any_changed
 
@@ -888,15 +738,10 @@ class LayoutEditorApp:
         return (self.agent_visual_radius_pixels(agent) + 8.0) / self.view["scale"]
 
     def get_agent_by_id(self, agent_id: str | None) -> dict | None:
-        if agent_id is None:
-            return None
-        for agent in self.agents:
-            if agent["id"] == agent_id:
-                return agent
-        return None
+        return self.simulation.get_agent_by_id(agent_id)
 
     def get_agent_hit(self, world_point: dict) -> dict | None:
-        for agent in reversed(self.agents):
+        for agent in reversed(self.simulation.agents):
             if distance(world_point, agent["position"]) <= self.agent_hit_radius_world(agent):
                 return {"kind": "agent", "id": agent["id"]}
         return None
@@ -941,7 +786,7 @@ class LayoutEditorApp:
         )
 
     def draw_agent_labels(self) -> None:
-        for agent in self.agents:
+        for agent in self.simulation.agents:
             if not self.should_draw_agent_label(agent):
                 continue
             screen = self.world_to_canvas(agent["position"])
@@ -999,9 +844,7 @@ class LayoutEditorApp:
         self.update_meta_and_title()
 
     def clamp_all_agents_to_bounds(self) -> None:
-        for agent in self.agents:
-            clamped_position, _, _ = self.clamp_agent_position(agent, agent["position"])
-            agent["position"] = clamped_position
+        self.simulation.clamp_all_agents_to_bounds()
 
     def commit_layout_change(self, before_state: dict, message: str, *, sync_world: bool = False) -> bool:
         changed = before_state["layout"] != self.layout
@@ -1139,6 +982,7 @@ class LayoutEditorApp:
         before_state = self.capture_state()
         try:
             self.layout = self._normalize_layout(read_json(Path(path)))
+            self.simulation.attach_layout(self.layout)
             self.selected_kind = "zone"
             self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
             self.restore_saved_view_state()
@@ -1152,6 +996,7 @@ class LayoutEditorApp:
             return
         before_state = self.capture_state()
         self.layout = self._normalize_layout(deep_copy(self.default_layout))
+        self.simulation.attach_layout(self.layout)
         self.selected_kind = "zone"
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
         self.restore_saved_view_state()
@@ -1273,7 +1118,7 @@ class LayoutEditorApp:
                 self.tree.insert(points_parent, "end", iid=f"point:{point['id']}", text=point["label"])
 
             agents_parent = self.tree.insert("", "end", iid="group-agent", text="Roman Agents", open=True)
-            for agent in self.agents:
+            for agent in self.simulation.agents:
                 self.tree.insert(agents_parent, "end", iid=f"agent:{agent['id']}", text=agent["label"])
 
             walls_parent = self.tree.insert("", "end", iid="group-wall", text="Walls", open=True)
@@ -1787,7 +1632,7 @@ class LayoutEditorApp:
                 self.draw_wall(wall)
             for point in self.layout["points"]:
                 self.draw_point(point)
-            for agent in self.agents:
+            for agent in self.simulation.agents:
                 self.draw_agent(agent)
             self.draw_point_labels()
             self.draw_agent_labels()

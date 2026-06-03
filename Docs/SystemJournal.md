@@ -68,6 +68,8 @@ If a change makes the code easier to ship right now but harder to upgrade safely
 Important files:
 
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
+- `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
+- `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
 - `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
 - `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
@@ -194,6 +196,7 @@ The editor currently supports:
 - Layout editing remains available while the simulation is running whenever `Freeze Layout` is off.
 - Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
 - Explicit saves now persist the current camera zoom and pan, so refreshes and reopen cycles can return to the same authored view.
+- The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
