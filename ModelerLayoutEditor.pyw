@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 import tkinter as tk
@@ -300,11 +301,12 @@ class LayoutEditorApp:
         button_row = ttk.Frame(sidebar)
         button_row.pack(fill="x", pady=(0, 12))
         ttk.Button(button_row, text="Save Layout", command=self.save_layout_now).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Undo", command=self.undo_last_change).grid(row=0, column=1, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=0, column=2, sticky="ew")
-        ttk.Button(button_row, text="Import JSON", command=self.import_json).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0))
-        ttk.Button(button_row, text="Export JSON", command=self.export_json).grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0))
-        ttk.Button(button_row, text="Open Data Folder", command=self.open_data_folder).grid(row=1, column=2, sticky="ew", pady=(6, 0))
+        ttk.Button(button_row, text="Refresh App", command=self.refresh_app).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(button_row, text="Undo", command=self.undo_last_change).grid(row=0, column=2, sticky="ew")
+        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0))
+        ttk.Button(button_row, text="Import JSON", command=self.import_json).grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0))
+        ttk.Button(button_row, text="Export JSON", command=self.export_json).grid(row=1, column=2, sticky="ew", pady=(6, 0))
+        ttk.Button(button_row, text="Open Data Folder", command=self.open_data_folder).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
         button_row.columnconfigure((0, 1, 2), weight=1)
 
         ttk.Label(sidebar, textvariable=self.status_var, wraplength=340, justify="left").pack(anchor="w", pady=(10, 14))
@@ -382,7 +384,7 @@ class LayoutEditorApp:
 
         viewer_hint = ttk.Label(
             top_bar,
-            text="Click to select. Drag bodies to move, drag handles to reshape, scroll to zoom, right-drag to pan, and use the inspector for exact values. Labels declutter by zoom and selection.",
+            text="Click to select. Drag bodies to move, drag handles to reshape, scroll to zoom, right-drag to pan, and use the inspector for exact values. Labels declutter by zoom and selection. Use Refresh App to load the newest editor build.",
             wraplength=900,
             justify="left",
         )
@@ -409,6 +411,7 @@ class LayoutEditorApp:
         self.canvas.bind("<Leave>", lambda _event: self.canvas.configure(cursor=""))
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
         self.root.bind("<Control-s>", self.save_layout_now)
+        self.root.bind("<Control-r>", self.refresh_app)
         self.root.bind("<Control-z>", self.undo_last_change)
         self.root.bind("<Control-0>", self.reset_view)
 
@@ -497,12 +500,12 @@ class LayoutEditorApp:
 
     def update_meta_and_title(self) -> None:
         build_text = f"UI {format_build_stamp(self.loaded_build_mtime)}"
-        restart_text = " | Restart to load newer UI" if self.restart_needed else ""
+        restart_text = " | Refresh to load newer UI" if self.restart_needed else ""
         dirty_suffix = " | Unsaved changes" if self.dirty else ""
         self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']} | {build_text}{restart_text}{dirty_suffix}")
         title = self.window_title_base
         if self.restart_needed:
-            title += " - Restart Needed"
+            title += " - Refresh Needed"
         if self.dirty:
             title += "*"
         self.root.title(title)
@@ -682,6 +685,33 @@ class LayoutEditorApp:
         self.status_var.set(message)
         self.update_meta_and_title()
 
+    def confirm_unsaved_action(self, action_label: str) -> bool:
+        if not self.dirty:
+            return True
+        decision = messagebox.askyesnocancel("Unsaved Changes", f"Save layout changes before {action_label}?")
+        if decision is None:
+            return False
+        if decision:
+            self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
+        return True
+
+    def refresh_app(self, _event=None) -> str | None:
+        if not self.confirm_unsaved_action("refreshing the editor"):
+            if _event is not None:
+                return "break"
+            return None
+        try:
+            subprocess.Popen([sys.executable, str(SCRIPT_PATH)], cwd=str(ROOT))
+        except Exception as error:
+            messagebox.showerror("Refresh Failed", f"Could not refresh the editor.\n\n{error}")
+            if _event is not None:
+                return "break"
+            return None
+        self.root.destroy()
+        if _event is not None:
+            return "break"
+        return None
+
     def save_layout_now(self, _event=None) -> str | None:
         self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
         self.render_stats_and_labels()
@@ -705,15 +735,9 @@ class LayoutEditorApp:
         return None
 
     def on_close(self) -> None:
-        if not self.dirty:
+        if self.confirm_unsaved_action("closing"):
             self.root.destroy()
             return
-        decision = messagebox.askyesnocancel("Unsaved Changes", "Save layout changes before closing?")
-        if decision is None:
-            return
-        if decision:
-            self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
-        self.root.destroy()
 
     def render_all(self) -> None:
         self.render_tree()

@@ -155,7 +155,8 @@ The editor currently supports:
 - Adaptive label density so full-scene views show major geography first and dense local detail later.
 - Point labels rendered as decluttered callouts instead of raw overlapping text.
 - Label badges, label text, and label connector lines raised above geometry so dense camp details stay readable while editing.
-- A visible UI build stamp plus restart-needed title state when the editor code on disk is newer than the running window.
+- A visible UI build stamp plus refresh-needed title state when the editor code on disk is newer than the running window.
+- An in-app `Refresh App` action plus `Ctrl+R` to relaunch into the newest editor build without a manual close/reopen cycle.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
 - Explicit save into `data/current_layout.json`.
@@ -177,6 +178,8 @@ The intended non-technical entry point is the desktop shortcut:
 That shortcut targets the Python-backed local editor instead of a browser page or a copied launcher executable. This avoids the earlier failure mode where a moved executable could no longer find repo-relative files.
 
 The launcher should also avoid reviving a stale editor window after code changes. If the script on disk is newer than the running editor process, launching from the shortcut should start a fresh instance so UI work is actually visible.
+
+The desktop shortcut can also use a local override icon at `Build\desktop\ModelerDesktopIcon.ico` when that file exists. This keeps user-chosen shortcut art local without forcing a third-party asset into git.
 
 If the shortcut ever disappears, recreate it with `tools/desktop/CreateCurrentSimulationShortcut.ps1`.
 

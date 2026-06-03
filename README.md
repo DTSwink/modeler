@@ -18,6 +18,8 @@ Double-click `StartModeler.bat` to launch the local editor window from Windows.
 
 The launcher is meant to open the latest editor build. If editor code changed on disk after a window was already running, a fresh instance should open instead of reviving the stale one. The editor title and top metadata also carry a UI build stamp so outdated windows are easier to spot.
 
+Inside the editor, use `Refresh App` or `Ctrl+R` to relaunch into the newest local build without manually closing the window first. If there are unsaved layout edits, the refresh action prompts before continuing.
+
 Open `RunBlock0ASmoke.exe` to launch the current pure C++ smoke test without typing commands.
 
 `BuildAndTestCore.bat` remains the underlying script if we need to inspect or change the build flow.

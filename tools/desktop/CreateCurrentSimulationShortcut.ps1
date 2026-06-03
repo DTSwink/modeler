@@ -1,6 +1,7 @@
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
 $target = Join-Path $repoRoot "ModelerLayoutEditorLauncher.exe"
+$iconOverride = Join-Path $repoRoot "Build\desktop\ModelerDesktopIcon.ico"
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "Modeler Current Simulation.lnk"
 
@@ -15,7 +16,12 @@ $shortcut.TargetPath = $target
 $shortcut.Arguments = ""
 $shortcut.WorkingDirectory = $repoRoot
 $shortcut.Description = "Open the latest local Modeler layout editor"
-$shortcut.IconLocation = "$target,0"
+if (Test-Path -LiteralPath $iconOverride) {
+    $shortcut.IconLocation = $iconOverride
+}
+else {
+    $shortcut.IconLocation = "$target,0"
+}
 $shortcut.Save()
 
 Write-Output "Created shortcut: $shortcutPath"
