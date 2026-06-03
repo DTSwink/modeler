@@ -60,6 +60,7 @@ LABEL_TEXT_TAG = "label_text"
 HANDLE_TAG = "selection_handle"
 FRAME_TAG = "world_frame"
 SIMULATION_FRAME_MS = 16
+RENDER_FRAME_INTERVAL_SECONDS = 1.0 / 30.0
 SIMULATION_SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 ROMAN_SIMULATION_ZONE_ID = "zone-roman-camp"
 ROMAN_AGENT_COUNT = 5
@@ -249,6 +250,8 @@ class LayoutEditorApp:
         self.sim_speed_var = tk.StringVar(value=format_speed_label(1.0))
         self.freeze_layout_var = tk.BooleanVar(value=False)
         self.last_simulation_tick = time.perf_counter()
+        self.last_canvas_render = 0.0
+        self.last_agent_details_refresh = 0.0
         self.spacebar_toggle_pending = False
         self.restore_saved_view_state()
         self.simulation = RomanSimulationRuntime(
@@ -451,27 +454,28 @@ class LayoutEditorApp:
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
 
         self.agent_details_frame = ttk.LabelFrame(canvas_frame, text="Agent Attributes", padding=8)
-        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=300, height=145)
+        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=285, height=132)
         self.agent_details_frame.place_forget()
         self.agent_details_frame.columnconfigure(0, weight=1)
         self.agent_details_frame.rowconfigure(0, weight=1)
-        self.agent_details_canvas = tk.Canvas(
+        self.agent_details_tree = ttk.Treeview(
             self.agent_details_frame,
-            highlightthickness=0,
-            borderwidth=0,
-            background=self.root.cget("background"),
+            columns=("value",),
+            show="tree headings",
+            height=5,
+            selectmode="none",
         )
-        self.agent_details_canvas.grid(row=0, column=0, sticky="nsew")
-        agent_details_scrollbar = ttk.Scrollbar(self.agent_details_frame, orient="vertical", command=self.agent_details_canvas.yview)
+        self.agent_details_tree.heading("#0", text="Attribute")
+        self.agent_details_tree.heading("value", text="Value")
+        self.agent_details_tree.column("#0", width=145, minwidth=105, stretch=True)
+        self.agent_details_tree.column("value", width=95, minwidth=70, stretch=True)
+        self.agent_details_tree.grid(row=0, column=0, sticky="nsew")
+        agent_details_scrollbar = ttk.Scrollbar(self.agent_details_frame, orient="vertical", command=self.agent_details_tree.yview)
         agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
-        self.agent_details_canvas.configure(yscrollcommand=agent_details_scrollbar.set)
-        self.agent_details_body = ttk.Frame(self.agent_details_canvas)
-        self.agent_details_window = self.agent_details_canvas.create_window((0, 0), window=self.agent_details_body, anchor="nw")
-        self.agent_details_body.bind("<Configure>", self.on_agent_details_body_configure)
-        self.agent_details_canvas.bind("<Configure>", self.on_agent_details_canvas_configure)
-        self.agent_details_canvas.bind("<MouseWheel>", self.on_agent_details_mousewheel)
-        self.agent_details_canvas.bind("<Button-4>", self.on_agent_details_mousewheel)
-        self.agent_details_canvas.bind("<Button-5>", self.on_agent_details_mousewheel)
+        self.agent_details_tree.configure(yscrollcommand=agent_details_scrollbar.set)
+        self.agent_details_tree.bind("<MouseWheel>", self.on_agent_details_mousewheel)
+        self.agent_details_tree.bind("<Button-4>", self.on_agent_details_mousewheel)
+        self.agent_details_tree.bind("<Button-5>", self.on_agent_details_mousewheel)
         self.root.bind("<Control-s>", self.save_layout_now)
         self.root.bind("<Control-r>", self.refresh_app)
         self.root.bind("<Control-z>", self.undo_last_change)
@@ -508,27 +512,14 @@ class LayoutEditorApp:
         button.bind("<KeyPress-space>", lambda _event: "break")
         return button
 
-    def on_agent_details_body_configure(self, _event=None) -> None:
-        self.agent_details_canvas.configure(scrollregion=self.agent_details_canvas.bbox("all"))
-
-    def on_agent_details_canvas_configure(self, event: tk.Event) -> None:
-        self.agent_details_canvas.itemconfigure(self.agent_details_window, width=max(1, event.width))
-
     def on_agent_details_mousewheel(self, event: tk.Event) -> str:
         if getattr(event, "delta", 0):
-            self.agent_details_canvas.yview_scroll(int(-event.delta / 120), "units")
+            self.agent_details_tree.yview_scroll(int(-event.delta / 120), "units")
         elif getattr(event, "num", None) == 4:
-            self.agent_details_canvas.yview_scroll(-1, "units")
+            self.agent_details_tree.yview_scroll(-1, "units")
         elif getattr(event, "num", None) == 5:
-            self.agent_details_canvas.yview_scroll(1, "units")
+            self.agent_details_tree.yview_scroll(1, "units")
         return "break"
-
-    def bind_agent_details_scroll(self, widget) -> None:
-        widget.bind("<MouseWheel>", self.on_agent_details_mousewheel, add="+")
-        widget.bind("<Button-4>", self.on_agent_details_mousewheel, add="+")
-        widget.bind("<Button-5>", self.on_agent_details_mousewheel, add="+")
-        for child in widget.winfo_children():
-            self.bind_agent_details_scroll(child)
 
     def _sync_world_controls(self) -> None:
         root = self.layout["root"]
@@ -693,9 +684,11 @@ class LayoutEditorApp:
         if self.simulation.running and real_dt > 0.0:
             changed = self.advance_simulation(real_dt * self.simulation.speed_multiplier)
         if changed:
-            self.render_canvas()
-            self.render_stats_and_labels()
-            self.render_agent_details_panel()
+            if now - self.last_canvas_render >= RENDER_FRAME_INTERVAL_SECONDS:
+                self.last_canvas_render = now
+                self.render_canvas()
+                self.render_stats_and_labels()
+            self.render_agent_details_panel(force=False)
         self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
 
     def advance_simulation(self, sim_dt: float) -> bool:
@@ -1055,6 +1048,7 @@ class LayoutEditorApp:
     def render_stats_and_labels(self) -> None:
         self.update_meta_and_title()
         selected = self.get_selected_item()
+        show_footer = self.selected_kind != "agent"
         if selected is None:
             self.selection_var.set("Nothing selected. Click a zone, location, or wall on the map or choose one in the list.")
         elif self.selected_kind == "zone":
@@ -1076,6 +1070,12 @@ class LayoutEditorApp:
                 f"{selected['id']} selected. Drag the wall body to move it, or drag either endpoint handle to reshape it."
             )
         self.footer_label.configure(text=self.layout["footer"])
+        if show_footer:
+            self.selection_label.grid(row=0, column=0, sticky="w")
+            self.footer_label.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        else:
+            self.selection_label.grid_remove()
+            self.footer_label.grid_remove()
         self.update_simulation_summary()
 
     def render_tree(self) -> None:
@@ -1124,10 +1124,7 @@ class LayoutEditorApp:
         else:
             self.render_wall_inspector(selected)
 
-    def render_agent_details_panel(self) -> None:
-        for child in self.agent_details_body.winfo_children():
-            child.destroy()
-
+    def render_agent_details_panel(self, *, force: bool = True) -> None:
         if self.selected_kind != "agent":
             self.clear_agent_details()
             self.agent_details_frame.place_forget()
@@ -1139,37 +1136,26 @@ class LayoutEditorApp:
             self.agent_details_frame.place_forget()
             return
         self.remember_last_clicked_agent(agent["id"])
-        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=300, height=145)
+        now = time.perf_counter()
+        if not force and now - self.last_agent_details_refresh < 0.25:
+            return
+        self.last_agent_details_refresh = now
+        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=285, height=132)
 
-        ttk.Label(
-            self.agent_details_body,
-            text="Live snapshot of the selected agent.",
-            wraplength=260,
-            justify="left",
-        ).pack(anchor="w", pady=(0, 10))
-
+        self.agent_details_tree.delete(*self.agent_details_tree.get_children())
         for section in agent_snapshot_sections(agent):
-            section_frame = ttk.LabelFrame(self.agent_details_body, text=section["title"], padding=10)
-            section_frame.pack(fill="x", pady=(0, 10))
-            section_frame.columnconfigure(1, weight=1)
-            for row_index, row in enumerate(section["rows"]):
-                self.render_agent_detail_row(section_frame, row_index, row)
+            section_id = f"section:{section['title']}"
+            self.agent_details_tree.insert("", "end", iid=section_id, text=section["title"], values=("",), open=True)
+            for row in section["rows"]:
+                value = self.format_agent_detail_value(row)
+                self.agent_details_tree.insert(section_id, "end", text=row["label"], values=(value,))
 
-        self.bind_agent_details_scroll(self.agent_details_body)
-        self.on_agent_details_body_configure()
-
-    def render_agent_detail_row(self, parent: ttk.Frame, row_index: int, row: dict) -> None:
-        ttk.Label(parent, text=row["label"]).grid(row=row_index, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
+    def format_agent_detail_value(self, row: dict) -> str:
         if row.get("kind") == "meter":
-            meter_frame = ttk.Frame(parent)
-            meter_frame.grid(row=row_index, column=1, sticky="ew", pady=(0, 8))
-            meter_frame.columnconfigure(0, weight=1)
             maximum = max(1, int(row.get("maximum", 100)))
             value = max(0, min(maximum, int(row["value"])))
-            ttk.Progressbar(meter_frame, mode="determinate", maximum=maximum, value=value).grid(row=0, column=0, sticky="ew")
-            ttk.Label(meter_frame, text=f"{value}/{maximum}").grid(row=0, column=1, sticky="e", padx=(10, 0))
-            return
-        ttk.Label(parent, text=str(row["value"])).grid(row=row_index, column=1, sticky="w", pady=(0, 8))
+            return f"{value}/{maximum}"
+        return str(row["value"])
 
     def render_zone_inspector(self, zone: dict) -> None:
         vars_map = {

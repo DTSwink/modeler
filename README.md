@@ -49,10 +49,12 @@ Block 0A has been corrected to be engine-independent:
 - Camp sub-areas for tents, infirmaries, and training grounds.
 - Hover-driven labels on the main zone/location body plus clearer location markers so the map stays readable as agent detail grows.
 - First Roman-only runtime simulation pass with five draggable agents, play/pause, and time-speed control inside the native editor.
+- 60 FPS simulation tick with a separate capped canvas redraw path to keep the editor lighter while running.
 - Optional `Freeze Layout` toggle so the map can stay readable during simulation without accidental handle grabs or layout drags.
 - Spacebar toggles the simulation without re-triggering the last clicked button.
 - `Save Layout` also persists the current zoom/pan view so refreshes reopen from the same camera framing.
 - Compact lower-left viewer `Agent Attributes` scroll panel for the selected agent, including hunger, thirst, and status.
+- Agent selection hides the old footer text so the attribute panel is the only active agent readout.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 

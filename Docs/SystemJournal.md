@@ -200,6 +200,7 @@ The editor currently supports:
 - Background grass implied by absence of a specific zone, so the old grass hallway authoring zone has been removed.
 - First Roman-side runtime sandbox with five prototype agents spawning from the authored Roman camp, then roaming across the full authored map.
 - In-editor `Play` / `Pause` plus time-speed control for compression and dilation while the scene keeps rendering at the normal UI cadence.
+- Simulation time still advances on the 60 FPS tick, but canvas repainting is capped separately so the editor does not waste CPU during live runs.
 - Agent drag-and-drop without leaving the editor.
 - Agent coordinates capped by the full map extents for the current prototype, with pathfinding intentionally deferred.
 - `Freeze Layout` toggle so hover inspection can stay active while map handles, map selection drags, and layout edits are suppressed.
@@ -207,6 +208,7 @@ The editor currently supports:
 - Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
 - Explicit saves now persist the current camera zoom and pan, so refreshes and reopen cycles can return to the same authored view.
 - A compact lower-left viewer `Agent Attributes` scroll panel that appears only for the selected Roman agent and shows a live runtime snapshot.
+- The old footer selection text is hidden while an agent is selected so it does not compete with the agent attribute panel.
 - Roman agents now carry modular headless `needs` and `health` state, starting with `hunger`, `thirst`, and `status`.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, and agent-state snapshot/default helpers now also live in isolated headless helper modules instead of being owned by the Tk app.
@@ -222,6 +224,8 @@ The important implementation rule is that even if the current native editor host
 The current agent-attributes pass follows that rule on purpose: hunger, thirst, and status live in headless agent state first, while the Tk app only renders a compact lower-left scrollable viewer snapshot for the selected agent. When needs logic gets smarter later, the runtime model should change in isolation and the UI should only need thin presentation updates.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
+
+For performance checks, do not kill broad Python processes. Identify Modeler-specific processes by command line first, clean up only stale Modeler test processes, and avoid touching unrelated ML experiments.
 
 ## Desktop Access
 
