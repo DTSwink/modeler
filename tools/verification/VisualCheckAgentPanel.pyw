@@ -33,7 +33,7 @@ def load_editor_module():
 
 
 def capture_window(window: tk.Tk) -> tuple[Image.Image, dict]:
-    hwnd = window.winfo_id()
+    hwnd = ctypes.wintypes.HWND(window.winfo_id())
     user32 = ctypes.windll.user32
     gdi32 = ctypes.windll.gdi32
     rect = ctypes.wintypes.RECT()
@@ -124,12 +124,14 @@ def main() -> None:
             rows.append(app.agent_details_tree.item(section, "text"))
             for child in app.agent_details_tree.get_children(section):
                 rows.append(app.agent_details_tree.item(child, "text"))
+        row_labels = {row.split(":", 1)[0] for row in rows}
 
         agent_place = {
             key: str(value)
             for key, value in app.agent_details_frame.place_info().items()
             if key != "in"
         }
+        agent_panel_title = str(app.agent_details_frame.cget("text"))
         footer_hidden = app.selection_label.winfo_manager() == "" and app.footer_label.winfo_manager() == ""
 
         image, capture_meta = capture_window(root)
@@ -139,12 +141,13 @@ def main() -> None:
         root.destroy()
         root = None
 
-        required_rows = {"Identity", "Needs", "Movement", "Hunger", "Thirst", "Status"}
+        required_rows = {"Health", "Needs", "Movement", "Identity", "Hunger", "Thirst", "Status"}
         ok = (
             capture_meta["printWindow"] != 0
             and image_meta["uniqueColors"] > 20
             and image_meta["panelDarkPixels"] > 30
-            and required_rows.issubset(set(rows))
+            and required_rows.issubset(row_labels)
+            and agent_panel_title == agent["label"]
             and footer_hidden
             and agent_place.get("anchor") == "sw"
         )
@@ -154,6 +157,7 @@ def main() -> None:
                 "png": str(PNG_PATH),
                 "elapsedSeconds": round(time.perf_counter() - start, 3),
                 "rows": rows,
+                "agentPanelTitle": agent_panel_title,
                 "agentPanelPlace": agent_place,
                 "footerHidden": footer_hidden,
                 **capture_meta,

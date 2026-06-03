@@ -45,11 +45,8 @@ def agent_snapshot_sections(agent: dict) -> list[dict]:
     normalize_agent_state(agent)
     return [
         {
-            "title": "Identity",
+            "title": "Health",
             "rows": [
-                {"label": "Id", "value": agent["id"]},
-                {"label": "Label", "value": agent["label"]},
-                {"label": "Faction", "value": agent["faction"]},
                 {"label": "Status", "value": agent["health"]["status"].title()},
             ],
         },
@@ -71,6 +68,14 @@ def agent_snapshot_sections(agent: dict) -> list[dict]:
                 {"label": "Target Heading", "value": _format_angle(agent["targetHeadingRadians"])},
                 {"label": "Turn Rate", "value": _format_float(agent["turnRate"], digits=2)},
                 {"label": "Decision Timer", "value": f"{max(0.0, float(agent['decisionTimer'])):.2f}s"},
+            ],
+        },
+        {
+            "title": "Identity",
+            "rows": [
+                {"label": "Id", "value": agent["id"]},
+                {"label": "Label", "value": agent["label"]},
+                {"label": "Faction", "value": agent["faction"]},
             ],
         },
     ]

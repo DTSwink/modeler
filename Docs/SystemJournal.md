@@ -207,7 +207,8 @@ The editor currently supports:
 - Layout editing remains available while the simulation is running whenever `Freeze Layout` is off.
 - Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
 - Explicit saves now persist the current camera zoom and pan, so refreshes and reopen cycles can return to the same authored view.
-- A compact lower-left viewer `Agent Attributes` scroll panel that appears only for the selected Roman agent and shows a live runtime snapshot.
+- A compact lower-left viewer agent panel that appears only for the selected Roman agent and shows a live runtime snapshot. The panel title is the agent label, not generic UI wording.
+- Agent panel rows do not use visible `Attribute` / `Value` headers. The space is reserved for useful data, with identity details placed at the end of the list.
 - The old footer selection text is hidden while an agent is selected so it does not compete with the agent attribute panel.
 - Roman agents now carry modular headless `needs` and `health` state, starting with `hunger`, `thirst`, and `status`.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
@@ -225,7 +226,17 @@ The current agent-attributes pass follows that rule on purpose: hunger, thirst, 
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
-When running background visual checks, do not use a PowerShell wrapper that can spawn a visible console window. Use the Node REPL to launch `tools/verification/VisualCheckAgentPanel.pyw` with `windowsHide: true`, then read `Build/verification/visual_eye_check_agent_panel.json` and inspect the PNG.
+When running background visual checks, do not use a PowerShell wrapper that can spawn a visible console window. Do not use the `shell_command` PowerShell tool for these checks.
+
+Use this workflow instead:
+
+1. Run `tools/verification/VisualCheckAgentPanel.pyw` through the Node REPL with `child_process.spawn(..., { windowsHide: true })`.
+2. Read `Build/verification/visual_eye_check_agent_panel.json`.
+3. Inspect `Build/verification/visual_eye_check_agent_panel.png` with `view_image`.
+4. Trust the result only if the JSON says `ok: true` and the PNG visually shows the expected UI.
+5. Make sure no stale Modeler verifier/editor processes remain.
+
+This is specifically to avoid stealing focus, opening PowerShell, or disturbing other user work.
 
 For performance checks, do not kill broad Python processes. Identify Modeler-specific processes by command line first, clean up only stale Modeler test processes, and avoid touching unrelated ML experiments.
 

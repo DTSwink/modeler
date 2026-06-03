@@ -453,22 +453,18 @@ class LayoutEditorApp:
         self.canvas.bind("<Leave>", self.on_canvas_leave)
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
 
-        self.agent_details_frame = ttk.LabelFrame(canvas_frame, text="Agent Attributes", padding=8)
+        self.agent_details_frame = ttk.LabelFrame(canvas_frame, text="", padding=8)
         self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=285, height=132)
         self.agent_details_frame.place_forget()
         self.agent_details_frame.columnconfigure(0, weight=1)
         self.agent_details_frame.rowconfigure(0, weight=1)
         self.agent_details_tree = ttk.Treeview(
             self.agent_details_frame,
-            columns=("value",),
-            show="tree headings",
+            show="tree",
             height=5,
             selectmode="none",
         )
-        self.agent_details_tree.heading("#0", text="Attribute")
-        self.agent_details_tree.heading("value", text="Value")
-        self.agent_details_tree.column("#0", width=145, minwidth=105, stretch=True)
-        self.agent_details_tree.column("value", width=95, minwidth=70, stretch=True)
+        self.agent_details_tree.column("#0", width=250, minwidth=190, stretch=True)
         self.agent_details_tree.grid(row=0, column=0, sticky="nsew")
         agent_details_scrollbar = ttk.Scrollbar(self.agent_details_frame, orient="vertical", command=self.agent_details_tree.yview)
         agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
@@ -1136,6 +1132,7 @@ class LayoutEditorApp:
             self.agent_details_frame.place_forget()
             return
         self.remember_last_clicked_agent(agent["id"])
+        self.agent_details_frame.configure(text=agent["label"])
         now = time.perf_counter()
         if not force and now - self.last_agent_details_refresh < 0.25:
             return
@@ -1145,10 +1142,10 @@ class LayoutEditorApp:
         self.agent_details_tree.delete(*self.agent_details_tree.get_children())
         for section in agent_snapshot_sections(agent):
             section_id = f"section:{section['title']}"
-            self.agent_details_tree.insert("", "end", iid=section_id, text=section["title"], values=("",), open=True)
+            self.agent_details_tree.insert("", "end", iid=section_id, text=section["title"], open=True)
             for row in section["rows"]:
                 value = self.format_agent_detail_value(row)
-                self.agent_details_tree.insert(section_id, "end", text=row["label"], values=(value,))
+                self.agent_details_tree.insert(section_id, "end", text=f"{row['label']}: {value}")
 
     def format_agent_detail_value(self, row: dict) -> str:
         if row.get("kind") == "meter":
