@@ -225,6 +225,8 @@ The current agent-attributes pass follows that rule on purpose: hunger, thirst, 
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
+When running background visual checks, do not use a PowerShell wrapper that can spawn a visible console window. Use the Node REPL to launch `tools/verification/VisualCheckAgentPanel.pyw` with `windowsHide: true`, then read `Build/verification/visual_eye_check_agent_panel.json` and inspect the PNG.
+
 For performance checks, do not kill broad Python processes. Identify Modeler-specific processes by command line first, clean up only stale Modeler test processes, and avoid touching unrelated ML experiments.
 
 ## Desktop Access
