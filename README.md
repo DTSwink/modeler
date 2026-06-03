@@ -8,13 +8,12 @@ This repo should not contain an Unreal project during the core-building phase. T
 
 Desktop shortcut: `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`
 
-Open `CurrentSimulation.html` for the latest visual simulation snapshot.
+Open `ModelerLayoutEditor.pyw` for the native local layout editor.
 
-Double-click `StartModeler.bat` or `OpenCurrentSimulation.bat` to open that page from Windows.
+Double-click `StartModeler.bat` to launch the local editor window from Windows.
 
 Open `RunBlock0ASmoke.exe` to launch the current pure C++ smoke test without typing commands.
 
-`START_HERE.html` remains the secondary launchpad for tools and notes.
 `BuildAndTestCore.bat` remains the underlying script if we need to inspect or change the build flow.
 `tools/desktop/CreateCurrentSimulationShortcut.ps1` recreates the desktop shortcut if needed.
 
@@ -29,7 +28,8 @@ Block 0A has been corrected to be engine-independent:
 - Plain C++ layout draft container.
 - Block 0A validation-summary stub.
 - Smoke test for the pure core.
-- Visual snapshot page for the current layout foundation.
+- Native local layout editor with drag and inspector controls.
+- Repo-backed JSON draft files for the current layout state.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -37,7 +37,9 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 
 ## Test
 
-1. Open `CurrentSimulation.html` and confirm the top-down snapshot loads.
-2. Open `RunBlock0ASmoke.exe`.
-3. Confirm the console reports marker counts.
-4. Confirm it prints `Block 0A pure core smoke test passed.`
+1. Open `ModelerLayoutEditor.pyw` and confirm the native editor window opens.
+2. Drag a zone, point, and wall endpoint to confirm direct manipulation works.
+3. Confirm edits autosave into `data/current_layout.json`.
+4. Open `RunBlock0ASmoke.exe`.
+5. Confirm the console reports marker counts.
+6. Confirm it prints `Block 0A pure core smoke test passed.`

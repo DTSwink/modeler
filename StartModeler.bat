@@ -1,10 +1,17 @@
 @echo off
-set "START=%~dp0CurrentSimulation.html"
+set "SCRIPT=%~dp0ModelerLayoutEditor.pyw"
+set "PYTHONW=C:\Users\singerie\Documents\Cursor\stepper\.tools\python310\pythonw.exe"
 
-if not exist "%START%" (
-	echo Could not find "%START%".
+if not exist "%SCRIPT%" (
+	echo Could not find "%SCRIPT%".
 	pause
 	exit /b 1
 )
 
-start "" "%START%"
+if not exist "%PYTHONW%" (
+	echo Could not find "%PYTHONW%".
+	pause
+	exit /b 1
+)
+
+start "" "%PYTHONW%" "%SCRIPT%"

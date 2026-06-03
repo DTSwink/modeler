@@ -41,12 +41,13 @@ The player is never a special simulation entity. Later, player control should be
 
 Important files:
 
-- `CurrentSimulation.html`: primary visual snapshot for the latest local sim state.
-- `START_HERE.html`: rendered local launch page.
+- `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
 - `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
 - `src/modeler/sim/LayoutMarkers.cpp`: Block 0A marker summary/validation stub.
 - `tests/block0a_smoke.cpp`: current smoke test.
+- `data/default_layout.json`: reset source for the editor.
+- `data/current_layout.json`: autosaved working draft for the editor.
 - `tools/launchers/RunBlock0ASmoke.cpp`: Windows launcher source for the smoke test wrapper.
 - `tools/desktop/CreateCurrentSimulationShortcut.ps1`: recreates the desktop shortcut if needed.
 - `RunBlock0ASmoke.exe`: Windows wrapper that launches the smoke test script.
@@ -55,7 +56,7 @@ Important files:
 
 Local convenience artifact:
 
-- `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`: desktop shortcut that opens `CurrentSimulation.html`.
+- `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`: desktop shortcut that opens the native editor.
 
 Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` are ignored by git.
 
@@ -131,15 +132,16 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 ## Current Visual Surface
 
-`CurrentSimulation.html` is the stable human-facing view for the project. It is meant to be the thing a desktop shortcut opens.
+`ModelerLayoutEditor.pyw` is the stable human-facing view for the project. It is meant to be the thing the desktop shortcut opens.
 
-The page currently shows:
+The editor currently supports:
 
-- A top-down visual preview of the intended first debug map.
-- A count of current Block 0A structural elements.
-- Honest status text explaining that the runtime agent sim is not built yet.
-
-This page should evolve with the project. The shortcut should stay stable even as the underlying systems become more capable.
+- Direct dragging of zones, points, and whole walls.
+- Zone resize handles.
+- Point radius and facing handles.
+- Wall endpoint handles.
+- Exact numeric edits through the inspector.
+- Autosave into `data/current_layout.json`.
 
 ## Desktop Access
 
@@ -147,33 +149,29 @@ The intended non-technical entry point is the desktop shortcut:
 
 - `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`
 
-That shortcut targets `CurrentSimulation.html` directly instead of copying a launcher executable to the desktop. This avoids the earlier failure mode where a moved executable could no longer find repo-relative files such as `BuildAndTestCore.bat`.
+That shortcut targets the Python-backed local editor instead of a browser page or a copied launcher executable. This avoids the earlier failure mode where a moved executable could no longer find repo-relative files.
 
 If the shortcut ever disappears, recreate it with `tools/desktop/CreateCurrentSimulationShortcut.ps1`.
 
 ## Access Notes
 
-Codex desktop local file links preview text files in the app editor. That means direct links to `.bat`, `.cmd`, `.ps1`, `.md`, or source files open the file instead of executing it.
-
-Because of that:
-
-- The preferred clickable sim entry point is `CurrentSimulation.html`.
-- The preferred clickable tools page is `START_HERE.html`.
-- The preferred runnable launcher is `RunBlock0ASmoke.exe`.
-- `BuildAndTestCore.bat` remains the underlying script, but it is not the preferred chat-link target.
+The browser-based viewer has been retired on purpose. The intended user-facing entry point is now the native local editor window plus the desktop shortcut that opens it.
 
 ## Current Test Workflow
 
-1. Open `RunBlock0ASmoke.exe`.
-2. The script initializes the Visual Studio C++ toolchain.
-3. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-4. It runs the produced smoke test.
-5. The smoke test creates one zone, one point, and one wall.
-6. It asserts the summary counts and prints the Block 0A validation message.
+1. Open `ModelerLayoutEditor.pyw`.
+2. Drag a zone, a point, and a wall endpoint.
+3. Confirm those edits appear in `data/current_layout.json`.
+4. Open `RunBlock0ASmoke.exe`.
+5. The script initializes the Visual Studio C++ toolchain.
+6. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+7. It runs the produced smoke test.
+8. The smoke test creates one zone, one point, and one wall.
+9. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
-The pure C++ Block 0A smoke test should pass locally through `RunBlock0ASmoke.exe`. `BuildAndTestCore.bat` remains the underlying script. Keep this verified after each core change.
+The native editor should open locally through the desktop shortcut or `ModelerLayoutEditor.pyw`. The pure C++ Block 0A smoke test should still pass through `RunBlock0ASmoke.exe`. Keep both verified after each core change.
 
 ## Not Implemented Yet
 

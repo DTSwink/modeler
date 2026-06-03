@@ -22,6 +22,7 @@ Saved/
 *.target
 *.modules
 *.obj
+__pycache__/
 
 # OS noise
 Thumbs.db
