@@ -12,6 +12,28 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 DEFAULT_LAYOUT_PATH = DATA_DIR / "default_layout.json"
 CURRENT_LAYOUT_PATH = DATA_DIR / "current_layout.json"
+CANVAS_BACKGROUND = "#ece5d6"
+MAP_LABEL_MODES = [
+    "Adaptive",
+    "All",
+    "Selected",
+]
+MAJOR_POINT_TYPES = {
+    "CommanderChair",
+    "Gate",
+    "WatchTower",
+    "SpawnPoint",
+}
+REGION_ZONE_TYPES = {
+    "Ocean",
+    "Lake",
+    "Forest",
+}
+SMALL_ZONE_TYPES = {
+    "TentArea",
+    "TrainingArea",
+    "Infirmary",
+}
 
 ZONE_TYPES = [
     "Walkable",
@@ -65,6 +87,38 @@ def write_json(path: Path, payload: dict) -> None:
 
 def deep_copy(payload: dict) -> dict:
     return json.loads(json.dumps(payload))
+
+
+def clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def hex_to_rgb(color: str) -> tuple[int, int, int]:
+    color = color.lstrip("#")
+    if len(color) != 6:
+        return (127, 127, 127)
+    return (
+        int(color[0:2], 16),
+        int(color[2:4], 16),
+        int(color[4:6], 16),
+    )
+
+
+def rgb_to_hex(rgb: tuple[int, int, int]) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+def blend_hex(color_a: str, color_b: str, weight_b: float) -> str:
+    weight_b = clamp(weight_b, 0.0, 1.0)
+    weight_a = 1.0 - weight_b
+    rgb_a = hex_to_rgb(color_a)
+    rgb_b = hex_to_rgb(color_b)
+    blended = (
+        int(rgb_a[0] * weight_a + rgb_b[0] * weight_b),
+        int(rgb_a[1] * weight_a + rgb_b[1] * weight_b),
+        int(rgb_a[2] * weight_a + rgb_b[2] * weight_b),
+    )
+    return rgb_to_hex(blended)
 
 
 def today_stamp() -> str:
@@ -129,6 +183,7 @@ class LayoutEditorApp:
         self.view_center = self.default_view_center()
         self.undo_stack: list[dict] = []
         self.max_undo_states = 80
+        self.label_boxes: list[tuple[float, float, float, float]] = []
         self.suppress_tree_event = False
         self.status_var = tk.StringVar(value="Ready. Click Save Layout to keep changes in data/current_layout.json.")
         self.meta_var = tk.StringVar()
@@ -156,6 +211,7 @@ class LayoutEditorApp:
         layout["editor"].setdefault("snapToGrid", True)
         layout["editor"].setdefault("snapSize", 50)
         layout["editor"].setdefault("labelFontSize", 12)
+        layout["editor"].setdefault("labelMode", "Adaptive")
         layout.setdefault("root", {})
         layout["root"].setdefault("cellSize", 100)
         layout["root"].setdefault("gridSize", {"x": 240, "y": 80})
@@ -248,6 +304,7 @@ class LayoutEditorApp:
         self.grid_y_var = tk.StringVar()
         self.snap_size_var = tk.StringVar()
         self.label_font_size_var = tk.StringVar()
+        self.label_mode_var = tk.StringVar()
         self.zoom_percent_var = tk.StringVar()
         self.draw_grid_var = tk.BooleanVar()
         self.draw_labels_var = tk.BooleanVar()
@@ -276,6 +333,10 @@ class LayoutEditorApp:
         ttk.Button(view_frame, text="Zoom In", command=self.zoom_in).grid(row=1, column=2, sticky="ew")
         ttk.Label(view_frame, text="Zoom").grid(row=2, column=0, sticky="w", pady=(10, 0))
         ttk.Label(view_frame, textvariable=self.zoom_percent_var).grid(row=2, column=1, columnspan=2, sticky="w", pady=(10, 0))
+        ttk.Label(view_frame, text="Label Density").grid(row=3, column=0, sticky="w", pady=(10, 0))
+        label_mode_combo = ttk.Combobox(view_frame, textvariable=self.label_mode_var, values=MAP_LABEL_MODES, state="readonly")
+        label_mode_combo.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(10, 0))
+        label_mode_combo.bind("<<ComboboxSelected>>", self.apply_world_settings)
 
         tree_frame = ttk.LabelFrame(sidebar, text="Layout Items", padding=12)
         tree_frame.pack(fill="both", expand=True, pady=(0, 12))
@@ -306,7 +367,7 @@ class LayoutEditorApp:
 
         viewer_hint = ttk.Label(
             top_bar,
-            text="Click to select. Drag bodies to move, drag handles to reshape, scroll to zoom, right-drag to pan, and use the inspector for exact values.",
+            text="Click to select. Drag bodies to move, drag handles to reshape, scroll to zoom, right-drag to pan, and use the inspector for exact values. Labels declutter by zoom and selection.",
             wraplength=900,
             justify="left",
         )
@@ -364,6 +425,7 @@ class LayoutEditorApp:
         self.grid_y_var.set(str(root["gridSize"]["y"]))
         self.snap_size_var.set(str(editor["snapSize"]))
         self.label_font_size_var.set(str(editor["labelFontSize"]))
+        self.label_mode_var.set(editor["labelMode"])
         self.draw_grid_var.set(bool(root["drawGrid"]))
         self.draw_labels_var.set(bool(root["drawLabels"]))
         self.snap_enabled_var.set(bool(editor["snapToGrid"]))
@@ -521,6 +583,7 @@ class LayoutEditorApp:
             self.layout["root"]["gridSize"]["y"] = max(1, int(float(self.grid_y_var.get() or 1)))
             self.layout["editor"]["snapSize"] = max(1, int(float(self.snap_size_var.get() or 1)))
             self.layout["editor"]["labelFontSize"] = max(8, int(float(self.label_font_size_var.get() or 8)))
+            self.layout["editor"]["labelMode"] = self.label_mode_var.get() if self.label_mode_var.get() in MAP_LABEL_MODES else "Adaptive"
             self.layout["root"]["drawGrid"] = bool(self.draw_grid_var.get())
             self.layout["root"]["drawLabels"] = bool(self.draw_labels_var.get())
             self.layout["editor"]["snapToGrid"] = bool(self.snap_enabled_var.get())
@@ -837,26 +900,217 @@ class LayoutEditorApp:
         self.selected_id = item_id
         self.render_all()
 
+    def current_label_mode(self) -> str:
+        mode = self.layout["editor"].get("labelMode", "Adaptive")
+        return mode if mode in MAP_LABEL_MODES else "Adaptive"
+
+    def zone_area(self, zone: dict) -> float:
+        return float(zone["size"]["x"]) * float(zone["size"]["y"])
+
+    def should_draw_zone_label(self, zone: dict) -> bool:
+        if not self.layout["root"]["drawLabels"]:
+            return False
+        mode = self.current_label_mode()
+        if mode == "All":
+            return True
+        is_selected = self.selected_kind == "zone" and self.selected_id == zone["id"]
+        if mode == "Selected":
+            return is_selected
+        if is_selected:
+            return True
+        if zone["type"] in REGION_ZONE_TYPES or zone["type"] == "Camp":
+            return True
+        if zone["type"] in SMALL_ZONE_TYPES:
+            return self.view_zoom >= 1.75
+        return self.zone_area(zone) >= 2_600_000 or self.view_zoom >= 1.55
+
+    def should_draw_point_label(self, point: dict) -> bool:
+        if not self.layout["root"]["drawLabels"]:
+            return False
+        mode = self.current_label_mode()
+        is_selected = self.selected_kind == "point" and self.selected_id == point["id"]
+        if mode == "All":
+            return True
+        if mode == "Selected":
+            return is_selected
+        if is_selected:
+            return True
+        if self.view_zoom >= 2.0:
+            return True
+        return self.view_zoom >= 1.45 and point["type"] in MAJOR_POINT_TYPES
+
+    def expanded_bbox(self, bbox: tuple[float, float, float, float], pad_x: float, pad_y: float) -> tuple[float, float, float, float]:
+        return (
+            bbox[0] - pad_x,
+            bbox[1] - pad_y,
+            bbox[2] + pad_x,
+            bbox[3] + pad_y,
+        )
+
+    def bbox_intersects(self, left: tuple[float, float, float, float], right: tuple[float, float, float, float], pad: float = 4.0) -> bool:
+        return not (
+            left[2] + pad < right[0]
+            or left[0] - pad > right[2]
+            or left[3] + pad < right[1]
+            or left[1] - pad > right[3]
+        )
+
+    def bbox_inside_canvas(self, bbox: tuple[float, float, float, float], pad: float = 4.0) -> bool:
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, self.canvas.winfo_height())
+        return bbox[0] >= pad and bbox[1] >= pad and bbox[2] <= width - pad and bbox[3] <= height - pad
+
+    def register_label_box(self, bbox: tuple[float, float, float, float]) -> None:
+        self.label_boxes.append(bbox)
+
+    def label_conflicts(self, bbox: tuple[float, float, float, float]) -> bool:
+        return any(self.bbox_intersects(bbox, existing) for existing in self.label_boxes)
+
+    def closest_point_on_bbox(self, point_x: float, point_y: float, bbox: tuple[float, float, float, float]) -> tuple[float, float]:
+        return (
+            clamp(point_x, bbox[0], bbox[2]),
+            clamp(point_y, bbox[1], bbox[3]),
+        )
+
+    def draw_badge_label(
+        self,
+        x: float,
+        y: float,
+        text: str,
+        *,
+        anchor: str = "center",
+        font: tuple = ("Segoe UI", 10, "bold"),
+        text_fill: str = "#1f1a15",
+        background_fill: str = "#f3ede2",
+        outline: str = "#9b907d",
+        pad_x: float = 8.0,
+        pad_y: float = 4.0,
+        register: bool = True,
+        allow_overlap: bool = True,
+    ) -> tuple[float, float, float, float] | None:
+        text_id = self.canvas.create_text(x, y, text=text, anchor=anchor, font=font, fill=text_fill)
+        raw_bbox = self.canvas.bbox(text_id)
+        if raw_bbox is None:
+            self.canvas.delete(text_id)
+            return None
+        bbox = self.expanded_bbox(raw_bbox, pad_x, pad_y)
+        if (not allow_overlap) and (self.label_conflicts(bbox) or not self.bbox_inside_canvas(bbox)):
+            self.canvas.delete(text_id)
+            return None
+        rect_id = self.canvas.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], fill=background_fill, outline=outline, width=1)
+        self.canvas.tag_raise(text_id, rect_id)
+        if register:
+            self.register_label_box(bbox)
+        return bbox
+
+    def zone_screen_bounds(self, zone: dict) -> tuple[float, float, float, float]:
+        corners = [self.world_to_canvas(corner) for corner in self.zone_corners(zone)]
+        xs = [corner["x"] for corner in corners]
+        ys = [corner["y"] for corner in corners]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def zone_label_position(self, zone: dict) -> tuple[float, float, str]:
+        bounds = self.zone_screen_bounds(zone)
+        if zone["type"] == "Camp":
+            return ((bounds[0] + bounds[2]) * 0.5, max(18.0, bounds[1] - 10), "s")
+        if zone["type"] in SMALL_ZONE_TYPES:
+            return (bounds[0] + 10, max(18.0, bounds[1] + 10), "nw")
+        center = self.world_to_canvas(zone["center"])
+        return (center["x"], center["y"], "center")
+
+    def small_zone_label_candidates(self, zone: dict) -> list[tuple[float, float, str]]:
+        bounds = self.zone_screen_bounds(zone)
+        center_x = (bounds[0] + bounds[2]) * 0.5
+        center_y = (bounds[1] + bounds[3]) * 0.5
+        return [
+            (bounds[0] + 10, max(18.0, bounds[1] + 10), "nw"),
+            (bounds[2] - 10, max(18.0, bounds[1] + 10), "ne"),
+            (bounds[0] + 10, bounds[3] - 10, "sw"),
+            (bounds[2] - 10, bounds[3] - 10, "se"),
+            (center_x, max(18.0, bounds[1] - 10), "s"),
+            (center_x, bounds[3] + 10, "n"),
+            (center_x, center_y, "center"),
+        ]
+
+    def zone_fill_color(self, zone: dict) -> str:
+        mix_weight = 0.60 if not (self.selected_kind == "zone" and self.selected_id == zone["id"]) else 0.48
+        return blend_hex(zone["color"], CANVAS_BACKGROUND, mix_weight)
+
+    def point_label_candidates(self, point: dict, screen: dict, radius: float) -> list[tuple[float, float, str]]:
+        base = radius + 16
+        return [
+            (screen["x"] + base, screen["y"], "w"),
+            (screen["x"] + base, screen["y"] - base * 0.72, "sw"),
+            (screen["x"] + base, screen["y"] + base * 0.72, "nw"),
+            (screen["x"] - base, screen["y"], "e"),
+            (screen["x"] - base, screen["y"] - base * 0.72, "se"),
+            (screen["x"] - base, screen["y"] + base * 0.72, "ne"),
+            (screen["x"], screen["y"] - base, "s"),
+            (screen["x"], screen["y"] + base, "n"),
+            (screen["x"] + base * 1.45, screen["y"] - base * 0.25, "w"),
+            (screen["x"] - base * 1.45, screen["y"] - base * 0.25, "e"),
+        ]
+
+    def draw_point_labels(self) -> None:
+        visible_points = [point for point in self.layout["points"] if self.should_draw_point_label(point)]
+        visible_points.sort(
+            key=lambda point: (
+                0 if (self.selected_kind == "point" and self.selected_id == point["id"]) else 1,
+                0 if point["type"] in MAJOR_POINT_TYPES else 1,
+                -point["radius"],
+            )
+        )
+        for point in visible_points:
+            screen = self.world_to_canvas(point["position"])
+            radius = self.point_visual_radius_pixels(point)
+            color = "#2f6dff" if point["faction"] == "Roman" else "#c84836" if point["faction"] == "Ottoman" else "#7a6b56"
+            badge_fill = blend_hex(color, CANVAS_BACKGROUND, 0.74)
+            badge_outline = blend_hex(color, "#6c665b", 0.30)
+            font_size = max(9, int(self.layout["editor"]["labelFontSize"]) - 1)
+
+            for candidate_x, candidate_y, anchor in self.point_label_candidates(point, screen, radius):
+                bbox = self.draw_badge_label(
+                    candidate_x,
+                    candidate_y,
+                    point["label"],
+                    anchor=anchor,
+                    font=("Segoe UI", font_size, "bold" if point["type"] in MAJOR_POINT_TYPES else "normal"),
+                    text_fill="#1f1a15",
+                    background_fill=badge_fill,
+                    outline=badge_outline,
+                    pad_x=7.0,
+                    pad_y=3.0,
+                    register=True,
+                    allow_overlap=False,
+                )
+                if bbox is None:
+                    continue
+                line_end = self.closest_point_on_bbox(screen["x"], screen["y"], bbox)
+                if distance({"x": screen["x"], "y": screen["y"]}, {"x": line_end[0], "y": line_end[1]}) > radius + 10:
+                    self.canvas.create_line(screen["x"], screen["y"], line_end[0], line_end[1], fill=badge_outline, width=1)
+                break
+
     def render_canvas(self) -> None:
         self.canvas.delete("all")
+        self.label_boxes = []
         width = max(1, self.canvas.winfo_width())
         height = max(1, self.canvas.winfo_height())
         view = self.compute_view(width, height)
         self.view = view
 
-        self.canvas.create_rectangle(0, 0, width, height, fill="#ece5d6", outline="")
+        self.canvas.create_rectangle(0, 0, width, height, fill=CANVAS_BACKGROUND, outline="")
 
         if self.layout["root"]["drawGrid"]:
             for x in range(0, self.layout["root"]["gridSize"]["x"] + 1, 4):
                 world_x = x * self.layout["root"]["cellSize"]
                 top = self.world_to_canvas({"x": world_x, "y": 0})
                 bottom = self.world_to_canvas({"x": world_x, "y": view["worldHeight"]})
-                self.canvas.create_line(top["x"], top["y"], bottom["x"], bottom["y"], fill="#d4cab8")
+                self.canvas.create_line(top["x"], top["y"], bottom["x"], bottom["y"], fill="#ddd3c0")
             for y in range(0, self.layout["root"]["gridSize"]["y"] + 1, 4):
                 world_y = y * self.layout["root"]["cellSize"]
                 left = self.world_to_canvas({"x": 0, "y": world_y})
                 right = self.world_to_canvas({"x": view["worldWidth"], "y": world_y})
-                self.canvas.create_line(left["x"], left["y"], right["x"], right["y"], fill="#d4cab8")
+                self.canvas.create_line(left["x"], left["y"], right["x"], right["y"], fill="#ddd3c0")
 
         if self.layout["root"]["drawLayout"]:
             for zone in sorted(self.layout["zones"], key=lambda item: item.get("priority", 0)):
@@ -865,6 +1119,7 @@ class LayoutEditorApp:
                 self.draw_wall(wall)
             for point in self.layout["points"]:
                 self.draw_point(point)
+            self.draw_point_labels()
 
         selected = self.get_selected_item()
         if selected:
@@ -911,18 +1166,70 @@ class LayoutEditorApp:
 
     def draw_zone(self, zone: dict) -> None:
         corners = self.zone_corners(zone)
-        fill = zone["color"]
-        outline = "#294fb6" if self.selected_kind == "zone" and self.selected_id == zone["id"] else "#5f564a"
-        width = 3 if self.selected_kind == "zone" and self.selected_id == zone["id"] else 1
-        label_font_size = max(8, int(self.layout["editor"]["labelFontSize"]))
+        fill = self.zone_fill_color(zone)
+        outline = "#294fb6" if self.selected_kind == "zone" and self.selected_id == zone["id"] else blend_hex(zone["color"], "#5f564a", 0.42)
+        width = 3 if self.selected_kind == "zone" and self.selected_id == zone["id"] else 2 if zone["type"] == "Camp" else 1
+        label_font_size = max(9, int(self.layout["editor"]["labelFontSize"]))
         points = []
         for corner in corners:
             screen = self.world_to_canvas(corner)
             points.extend([screen["x"], screen["y"]])
-        self.canvas.create_polygon(points, fill=fill, outline=outline, width=width, stipple="gray25")
-        if self.layout["root"]["drawLabels"]:
-            center = self.world_to_canvas(zone["center"])
-            self.canvas.create_text(center["x"], center["y"], text=zone["label"], font=("Georgia", label_font_size, "bold"), fill="#1f1a15")
+        self.canvas.create_polygon(points, fill=fill, outline=outline, width=width)
+        if self.should_draw_zone_label(zone):
+            badge_fill = blend_hex(zone["color"], CANVAS_BACKGROUND, 0.72 if zone["type"] in SMALL_ZONE_TYPES else 0.66)
+            badge_outline = blend_hex(zone["color"], "#5f564a", 0.35)
+            if zone["type"] in SMALL_ZONE_TYPES:
+                for candidate_x, candidate_y, anchor in self.small_zone_label_candidates(zone):
+                    bbox = self.draw_badge_label(
+                        candidate_x,
+                        candidate_y,
+                        zone["label"],
+                        anchor=anchor,
+                        font=("Segoe UI", max(8, label_font_size - 1), "bold"),
+                        text_fill="#1f1a15",
+                        background_fill=badge_fill,
+                        outline=badge_outline,
+                        pad_x=7.0,
+                        pad_y=3.0,
+                        register=True,
+                        allow_overlap=False,
+                    )
+                    if bbox is not None:
+                        break
+                else:
+                    if not (self.selected_kind == "zone" and self.selected_id == zone["id"]):
+                        return
+                    label_x, label_y, anchor = self.zone_label_position(zone)
+                    self.draw_badge_label(
+                        label_x,
+                        label_y,
+                        zone["label"],
+                        anchor=anchor,
+                        font=("Segoe UI", max(8, label_font_size - 1), "bold"),
+                        text_fill="#1f1a15",
+                        background_fill=badge_fill,
+                        outline=badge_outline,
+                        pad_x=7.0,
+                        pad_y=3.0,
+                        register=True,
+                        allow_overlap=True,
+                    )
+            else:
+                label_x, label_y, anchor = self.zone_label_position(zone)
+                self.draw_badge_label(
+                    label_x,
+                    label_y,
+                    zone["label"],
+                    anchor=anchor,
+                    font=("Segoe UI", label_font_size, "bold"),
+                    text_fill="#1f1a15",
+                    background_fill=badge_fill,
+                    outline=badge_outline,
+                    pad_x=8.0,
+                    pad_y=4.0,
+                    register=True,
+                    allow_overlap=True,
+                )
 
     def draw_wall(self, wall: dict) -> None:
         a = self.world_to_canvas(wall["a"])
@@ -935,8 +1242,9 @@ class LayoutEditorApp:
         screen = self.world_to_canvas(point["position"])
         color = "#2f6dff" if point["faction"] == "Roman" else "#c84836" if point["faction"] == "Ottoman" else "#7a6b56"
         radius = self.point_visual_radius_pixels(point)
-        label_font_size = max(8, int(self.layout["editor"]["labelFontSize"]) - 1)
-        self.canvas.create_oval(screen["x"] - radius, screen["y"] - radius, screen["x"] + radius, screen["y"] + radius, fill=color, outline="white", width=2)
+        outline = "white" if not (self.selected_kind == "point" and self.selected_id == point["id"]) else "#1f1a15"
+        outline_width = 2 if not (self.selected_kind == "point" and self.selected_id == point["id"]) else 3
+        self.canvas.create_oval(screen["x"] - radius, screen["y"] - radius, screen["x"] + radius, screen["y"] + radius, fill=color, outline=outline, width=outline_width)
         facing_length = radius + max(16, point["radius"] * self.view["scale"] * 0.14)
         self.canvas.create_line(
             screen["x"],
@@ -947,8 +1255,6 @@ class LayoutEditorApp:
             width=2,
             arrow=tk.LAST,
         )
-        if self.layout["root"]["drawLabels"]:
-            self.canvas.create_text(screen["x"] + 10, screen["y"] - 10, text=point["label"], anchor="sw", font=("Georgia", label_font_size), fill="#1f1a15")
 
     def point_visual_radius_pixels(self, point: dict) -> float:
         return max(6.0, point["radius"] * self.view["scale"] * 0.12)

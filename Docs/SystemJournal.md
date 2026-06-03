@@ -39,6 +39,8 @@ The player is never a special simulation entity. Later, player control should be
 
 The layout editor is also part of that core direction. Treat the saved layout JSON as authored simulation input, not disposable mockup data. Future validation, baking, placement logic, and early runtime systems should read from this authored layout instead of inventing a separate temporary map source.
 
+UI readability matters now, not later. The editor is heading toward agent overlays, so the whole-scene view needs strong visual hierarchy before we add more moving parts.
+
 ## Project Shape
 
 Important files:
@@ -150,6 +152,8 @@ The editor currently supports:
 - `Ctrl+Z` undo for layout and inspector changes.
 - Mouse-wheel zoom and right-drag panning.
 - Adjustable `Label Text Size` for on-map labels.
+- Adaptive label density so full-scene views show major geography first and dense local detail later.
+- Point labels rendered as decluttered callouts instead of raw overlapping text.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
 - Explicit save into `data/current_layout.json`.
@@ -157,6 +161,10 @@ The editor currently supports:
 - Background grass implied by absence of a specific zone, so the old grass hallway authoring zone has been removed.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
+
+The important UI rule is that whole-scene readability wins over showing every label at once. Smaller camp-internal labels can hide until selection or zoom if that keeps the authored scene understandable.
+
+For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
 ## Desktop Access
 
@@ -178,20 +186,22 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 2. Drag a zone, a point, and a wall endpoint.
 3. Confirm point clicks are tight to the visible marker, especially for enlarged watchtowers.
 4. Confirm dragging one zone corner keeps the opposite corner fixed instead of resizing symmetrically.
-5. Confirm `Ctrl+Z` reverses the last layout change.
-6. Confirm mouse-wheel zoom and right-drag panning work.
-7. Change `Label Text Size` and confirm the label rendering updates.
-8. Confirm tent, infirmary, and training sub-areas exist inside each camp.
-9. Confirm the old grass hallway zone is absent.
-10. Click `Save Layout` or press `Ctrl+S`.
-11. Confirm those edits appear in `data/current_layout.json`.
-12. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
-13. Open `RunBlock0ASmoke.exe`.
-14. The script initializes the Visual Studio C++ toolchain.
-15. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-16. It runs the produced smoke test.
-17. The smoke test creates one zone, one point, and one wall.
-18. It asserts the summary counts and prints the Block 0A validation message.
+5. Confirm the full-scene view keeps major region labels readable without camp internals turning into a text pile.
+6. Confirm `Label Density` changes label visibility as expected.
+7. Confirm `Ctrl+Z` reverses the last layout change.
+8. Confirm mouse-wheel zoom and right-drag panning work.
+9. Change `Label Text Size` and confirm the label rendering updates.
+10. Confirm tent, infirmary, and training sub-areas exist inside each camp.
+11. Confirm the old grass hallway zone is absent.
+12. Click `Save Layout` or press `Ctrl+S`.
+13. Confirm those edits appear in `data/current_layout.json`.
+14. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
+15. Open `RunBlock0ASmoke.exe`.
+16. The script initializes the Visual Studio C++ toolchain.
+17. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+18. It runs the produced smoke test.
+19. The smoke test creates one zone, one point, and one wall.
+20. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
