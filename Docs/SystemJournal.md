@@ -14,7 +14,7 @@ Update this journal after every implementation block or meaningful architecture 
 
 ## Current Stop Point
 
-Block 0A has been corrected and is awaiting approval.
+The project now has its first live agent-simulation pass inside the native editor.
 
 The project is now engine-independent. The core sim, layout model, validation, debug tools, and future behavior systems should be built outside Unreal first. Unreal should only receive a later adapter/hook layer after the core behavior is useful and stable.
 
@@ -40,6 +40,8 @@ The player is never a special simulation entity. Later, player control should be
 The layout editor is also part of that core direction. Treat the saved layout JSON as authored simulation input, not disposable mockup data. Future validation, baking, placement logic, and early runtime systems should read from this authored layout instead of inventing a separate temporary map source.
 
 UI readability matters now, not later. The editor is heading toward agent overlays, so the whole-scene view needs strong visual hierarchy before we add more moving parts.
+
+The simulation surface should stay unified with the authoring surface. Early runtime behavior is supposed to read from the same authored layout the user is editing, not from a detached mock scene.
 
 ## Project Shape
 
@@ -164,10 +166,19 @@ The editor currently supports:
 - Explicit save into `data/current_layout.json`.
 - Camp sub-areas for tents, infirmaries, and training grounds.
 - Background grass implied by absence of a specific zone, so the old grass hallway authoring zone has been removed.
+- First Roman-side runtime sandbox with five prototype agents moving inside the authored Roman camp.
+- In-editor `Play` / `Pause` plus time-speed control for compression and dilation while the scene keeps rendering at the normal UI cadence.
+- Agent drag-and-drop without leaving the editor.
+- Roman camp hard borders for the current prototype, with pathfinding intentionally deferred.
+- `Freeze Layout` toggle so hover inspection can stay active while map handles, map selection drags, and layout edits are suppressed.
+- Layout editing remains available while the simulation is running whenever `Freeze Layout` is off.
+- Button focus hardened so pressing the spacebar does not retrigger the last clicked button during map work.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
 The important UI rule is that whole-scene readability wins over showing every label at once. The current default is hover-driven labels, so the authored map stays legible before we add moving agents on top.
+
+The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, and `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
@@ -207,19 +218,25 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 14. Click `Save Layout` or press `Ctrl+S`.
 15. Confirm those edits appear in `data/current_layout.json`.
 16. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
-17. Open `RunBlock0ASmoke.exe`.
-18. The script initializes the Visual Studio C++ toolchain.
-19. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-20. It runs the produced smoke test.
-21. The smoke test creates one zone, one location, and one wall.
-22. It asserts the summary counts and prints the Block 0A validation message.
+17. Click `Play` and confirm five Roman agents begin moving inside the Roman camp.
+18. Change the simulation speed and confirm motion slows down or speeds up accordingly.
+19. Drag an agent and confirm it remains inside the Roman camp bounds.
+20. Toggle `Freeze Layout` on and confirm layout handles do not appear and map drags are blocked while hover inspection still works.
+21. Toggle `Freeze Layout` off and confirm layout editing resumes immediately, even while the simulation is still running.
+22. Press the spacebar after using toolbar buttons and confirm it does not retrigger the previous button action.
+23. Open `RunBlock0ASmoke.exe`.
+24. The script initializes the Visual Studio C++ toolchain.
+25. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+26. It runs the produced smoke test.
+27. The smoke test creates one zone, one location, and one wall.
+28. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
-The native editor should open locally through the desktop shortcut or `ModelerLayoutEditor.pyw`. The pure C++ Block 0A smoke test should still pass through `RunBlock0ASmoke.exe`. Keep both verified after each core change.
+The native editor should open locally through the desktop shortcut or `ModelerLayoutEditor.pyw`. The Roman prototype agents should run directly inside that editor without a separate host app. The pure C++ Block 0A smoke test should still pass through `RunBlock0ASmoke.exe`. Keep both verified after each core change.
 
 ## Not Implemented Yet
 
 Block 0B must add real validation and baked runtime layout data, still without Unreal dependencies.
 
-Do not add runtime AI, agents, pathfinding, combat, needs, perception, orders, final graphics, animation logic, or Unreal integration before their planned blocks.
+Pathfinding, faction mirroring for Ottoman agents, combat, needs, perception, orders, final graphics, animation logic, persistent runtime saves, and Unreal integration still belong to later blocks.

@@ -4,6 +4,8 @@ Engine-independent core for the Roman vs Ottoman 2D agent simulation.
 
 The native layout editor in this repo is not just a preview. It is the live authoring surface for the future simulation, and the saved layout data here should be treated as the next blocks' input map.
 
+The same native editor is now also the first runtime sandbox. Roman-side prototype agents move inside the authored Roman camp, so layout work and early simulation debugging happen in one place instead of splitting across tools.
+
 For UI cleanup and readability review, prefer user-provided screenshots plus background or headless checks before foreground launches when possible. That lets us tune the editor without taking over the active screen.
 
 This repo should not contain an Unreal project during the core-building phase. The simulation, layout model, validation, and debug tooling are built outside Unreal first. Unreal integration happens later through a dedicated adapter/hook layer.
@@ -40,6 +42,8 @@ Block 0A has been corrected to be engine-independent:
 - Repo-backed JSON save file for the current layout state.
 - Camp sub-areas for tents, infirmaries, and training grounds.
 - Hover-driven labels on the main zone/location body plus clearer location markers so the map stays readable as agent detail grows.
+- First Roman-only runtime simulation pass with five draggable agents, play/pause, and time-speed control inside the native editor.
+- Optional `Freeze Layout` toggle so the map can stay readable during simulation without accidental handle grabs or layout drags.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -57,8 +61,14 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 8. Confirm mouse-wheel zoom and right-drag panning work on the map.
 9. Change `Label Text Size` and confirm the on-map text updates.
 10. Confirm the tent, infirmary, and training areas exist inside each camp, and the old grass hallway is gone.
-11. Click `Save Layout` or press `Ctrl+S` to explicitly write the current draft to `data/current_layout.json`.
-12. Close and reopen the editor without saving a fresh edit, and confirm it returns to the last explicit save rather than unsaved session changes.
-13. Open `RunBlock0ASmoke.exe`.
-14. Confirm the console reports marker counts.
-15. Confirm it prints `Block 0A pure core smoke test passed.`
+11. Click `Play` and confirm five Roman agents begin wandering inside the Roman camp.
+12. Change the simulation speed and confirm time dilation/compression visibly changes agent motion.
+13. Drag an agent and confirm it stays clamped inside the Roman camp bounds.
+14. Toggle `Freeze Layout` on and confirm hovering still works while layout handles and map drag edits stop responding.
+15. Toggle `Freeze Layout` off and confirm zones, locations, and walls are editable again even if the simulation is still running.
+16. Press the spacebar after clicking buttons and confirm it does not retrigger the last button action.
+17. Click `Save Layout` or press `Ctrl+S` to explicitly write the current draft to `data/current_layout.json`.
+18. Close and reopen the editor without saving a fresh edit, and confirm it returns to the last explicit save rather than unsaved session changes.
+19. Open `RunBlock0ASmoke.exe`.
+20. Confirm the console reports marker counts.
+21. Confirm it prints `Block 0A pure core smoke test passed.`

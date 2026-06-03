@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import subprocess
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 import tkinter as tk
@@ -53,6 +55,17 @@ LABEL_BG_TAG = "label_bg"
 LABEL_TEXT_TAG = "label_text"
 HANDLE_TAG = "selection_handle"
 FRAME_TAG = "world_frame"
+SIMULATION_FRAME_MS = 16
+SIMULATION_SPEED_OPTIONS = [
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    4.0,
+    8.0,
+]
+ROMAN_SIMULATION_ZONE_ID = "zone-roman-camp"
+ROMAN_AGENT_COUNT = 5
 ZONE_TYPE_COLORS = {
     "TentArea": "#b7b2ab",
     "Infirmary": "#ede7df",
@@ -202,6 +215,19 @@ def format_build_stamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
 
+def format_sim_time(seconds: float) -> str:
+    total_seconds = max(0.0, float(seconds))
+    minutes = int(total_seconds // 60.0)
+    remainder = total_seconds - minutes * 60.0
+    return f"{minutes:02d}:{remainder:04.1f}"
+
+
+def format_speed_label(multiplier: float) -> str:
+    if abs(multiplier - round(multiplier)) < 0.001:
+        return f"{int(round(multiplier))}x"
+    return f"{multiplier:g}x"
+
+
 def distance(a: dict, b: dict) -> float:
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
 
@@ -271,11 +297,23 @@ class LayoutEditorApp:
         self.status_var = tk.StringVar(value="Ready. Click Save Layout to keep changes in data/current_layout.json.")
         self.meta_var = tk.StringVar()
         self.selection_var = tk.StringVar()
+        self.play_button_var = tk.StringVar(value="Play")
+        self.sim_summary_var = tk.StringVar()
+        self.sim_speed_var = tk.StringVar(value=format_speed_label(1.0))
+        self.freeze_layout_var = tk.BooleanVar(value=False)
+        self.simulation_running = False
+        self.simulation_speed = 1.0
+        self.simulation_time_seconds = 0.0
+        self.last_simulation_tick = time.perf_counter()
+        self.sim_rng = random.Random(1337)
+        self.agents = self.build_initial_agents()
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._sync_world_controls()
         self.render_all()
+        self.root.bind_all("<KeyPress-space>", self.on_spacebar_press, add="+")
+        self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
         self.root.after(2500, self.poll_for_editor_code_update)
 
     def _load_current_layout(self) -> dict:
@@ -345,6 +383,52 @@ class LayoutEditorApp:
 
         return layout
 
+    def build_initial_agents(self) -> list[dict]:
+        zone = self.simulation_bounds_zone()
+        rng = random.Random(1337)
+        agents: list[dict] = []
+        for index in range(ROMAN_AGENT_COUNT):
+            position = self.random_point_in_zone(zone, rng, agents)
+            heading = rng.uniform(0.0, math.tau)
+            agents.append(
+                {
+                    "id": f"agent-roman-{index + 1}",
+                    "label": f"Roman Agent {index + 1}",
+                    "faction": "Roman",
+                    "position": position,
+                    "radius": 90.0,
+                    "headingRadians": heading,
+                    "targetHeadingRadians": heading,
+                    "moveSpeed": rng.uniform(145.0, 225.0),
+                    "turnRate": rng.uniform(1.4, 2.5),
+                    "decisionTimer": rng.uniform(0.35, 1.6),
+                }
+            )
+        return agents
+
+    def random_point_in_zone(self, zone: dict, rng: random.Random, existing_agents: list[dict] | None = None) -> dict:
+        margin = 180.0
+        half_x = max(140.0, zone["size"]["x"] * 0.5 - margin)
+        half_y = max(140.0, zone["size"]["y"] * 0.5 - margin)
+        best_point = deep_copy(zone["center"])
+        attempts = 16
+        for _ in range(attempts):
+            local = {
+                "x": rng.uniform(-half_x, half_x),
+                "y": rng.uniform(-half_y, half_y),
+            }
+            rotated = local_to_world(local, zone["yawRadians"])
+            candidate = {
+                "x": zone["center"]["x"] + rotated["x"],
+                "y": zone["center"]["y"] + rotated["y"],
+            }
+            if not existing_agents:
+                return candidate
+            if all(distance(candidate, agent["position"]) >= 220.0 for agent in existing_agents):
+                return candidate
+            best_point = candidate
+        return best_point
+
     def _build_ui(self) -> None:
         self.root.columnconfigure(0, weight=0)
         self.root.columnconfigure(1, weight=1)
@@ -372,14 +456,42 @@ class LayoutEditorApp:
 
         button_row = ttk.Frame(sidebar)
         button_row.pack(fill="x", pady=(0, 12))
-        ttk.Button(button_row, text="Save Layout", command=self.save_layout_now).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Refresh App", command=self.refresh_app).grid(row=0, column=1, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Undo", command=self.undo_last_change).grid(row=0, column=2, sticky="ew")
-        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0))
-        ttk.Button(button_row, text="Import JSON", command=self.import_json).grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0))
-        ttk.Button(button_row, text="Export JSON", command=self.export_json).grid(row=1, column=2, sticky="ew", pady=(6, 0))
-        ttk.Button(button_row, text="Open Data Folder", command=self.open_data_folder).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        self._make_button(button_row, "Save Layout", self.save_layout_now).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self._make_button(button_row, "Refresh App", self.refresh_app).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        self._make_button(button_row, "Undo", self.undo_last_change).grid(row=0, column=2, sticky="ew")
+        self._make_button(button_row, "Reset Draft", self.reset_layout).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0))
+        self._make_button(button_row, "Import JSON", self.import_json).grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0))
+        self._make_button(button_row, "Export JSON", self.export_json).grid(row=1, column=2, sticky="ew", pady=(6, 0))
+        self._make_button(button_row, "Open Data Folder", self.open_data_folder).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
         button_row.columnconfigure((0, 1, 2), weight=1)
+
+        simulation_frame = ttk.LabelFrame(sidebar, text="Simulation", padding=12)
+        simulation_frame.pack(fill="x", pady=(0, 12))
+        simulation_frame.columnconfigure((0, 1, 2), weight=1)
+        ttk.Label(
+            simulation_frame,
+            text="Roman prototype: five agents wander inside the Roman camp at 60 FPS. Play keeps the layout live unless Freeze Layout is checked.",
+            wraplength=320,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        self._make_button(simulation_frame, None, self.toggle_simulation, textvariable=self.play_button_var).grid(row=1, column=0, sticky="ew", padx=(0, 6))
+        simulation_speed_combo = ttk.Combobox(
+            simulation_frame,
+            textvariable=self.sim_speed_var,
+            values=[format_speed_label(value) for value in SIMULATION_SPEED_OPTIONS],
+            state="readonly",
+        )
+        simulation_speed_combo.grid(row=1, column=1, sticky="ew", padx=(0, 6))
+        simulation_speed_combo.bind("<<ComboboxSelected>>", self.apply_simulation_speed)
+        ttk.Checkbutton(
+            simulation_frame,
+            text="Freeze Layout",
+            variable=self.freeze_layout_var,
+            command=self.on_freeze_layout_toggled,
+        ).grid(row=1, column=2, sticky="w")
+        ttk.Label(simulation_frame, textvariable=self.sim_summary_var, wraplength=320, justify="left").grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(10, 0)
+        )
 
         ttk.Label(sidebar, textvariable=self.status_var, wraplength=340, justify="left").pack(anchor="w", pady=(10, 14))
 
@@ -417,9 +529,9 @@ class LayoutEditorApp:
             wraplength=320,
             justify="left",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
-        ttk.Button(view_frame, text="Zoom Out", command=self.zoom_out).grid(row=1, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(view_frame, text="Fit View", command=self.reset_view).grid(row=1, column=1, sticky="ew", padx=(0, 6))
-        ttk.Button(view_frame, text="Zoom In", command=self.zoom_in).grid(row=1, column=2, sticky="ew")
+        self._make_button(view_frame, "Zoom Out", self.zoom_out).grid(row=1, column=0, sticky="ew", padx=(0, 6))
+        self._make_button(view_frame, "Fit View", self.reset_view).grid(row=1, column=1, sticky="ew", padx=(0, 6))
+        self._make_button(view_frame, "Zoom In", self.zoom_in).grid(row=1, column=2, sticky="ew")
         ttk.Label(view_frame, text="Zoom").grid(row=2, column=0, sticky="w", pady=(10, 0))
         ttk.Label(view_frame, textvariable=self.zoom_percent_var).grid(row=2, column=1, columnspan=2, sticky="w", pady=(10, 0))
         ttk.Label(view_frame, text="Label Mode").grid(row=3, column=0, sticky="w", pady=(10, 0))
@@ -507,6 +619,17 @@ class LayoutEditorApp:
         entry.bind("<Return>", callback)
         entry.bind("<FocusOut>", callback)
 
+    def _make_button(self, parent, text: str | None, command, *, textvariable: tk.StringVar | None = None):
+        def invoke():
+            try:
+                command()
+            finally:
+                self.root.after_idle(self.canvas.focus_set)
+
+        button = ttk.Button(parent, text=text if textvariable is None else "", textvariable=textvariable, command=invoke, takefocus=False)
+        button.bind("<KeyPress-space>", lambda _event: "break")
+        return button
+
     def _sync_world_controls(self) -> None:
         root = self.layout["root"]
         editor = self.layout["editor"]
@@ -520,6 +643,7 @@ class LayoutEditorApp:
         self.draw_labels_var.set(bool(root["drawLabels"]))
         self.snap_enabled_var.set(bool(editor["snapToGrid"]))
         self.zoom_percent_var.set(f"{int(round(self.view_zoom * 100))}%")
+        self.update_simulation_summary()
 
     def world_dimensions(self) -> tuple[float, float]:
         return (
@@ -549,6 +673,10 @@ class LayoutEditorApp:
             self.undo_stack.pop(0)
 
     def ensure_valid_selection(self) -> None:
+        if self.selected_kind == "agent" and self.selected_id is not None:
+            for agent in self.agents:
+                if agent["id"] == self.selected_id:
+                    return
         if self.selected_kind in {"zone", "point", "wall"} and self.selected_id is not None:
             for item in self.layout[f"{self.selected_kind}s"]:
                 if item["id"] == self.selected_id:
@@ -568,6 +696,7 @@ class LayoutEditorApp:
         self.selected_id = snapshot.get("selected_id")
         self.hover_kind = None
         self.hover_id = None
+        self.clamp_all_agents_to_bounds()
         self.ensure_valid_selection()
         self.dirty = self.layout != self.saved_layout
         self._sync_world_controls()
@@ -592,10 +721,257 @@ class LayoutEditorApp:
         self.update_meta_and_title()
         self.root.after(2500, self.poll_for_editor_code_update)
 
+    def update_simulation_summary(self) -> None:
+        state_text = "Running" if self.simulation_running else "Paused"
+        freeze_suffix = " | Layout frozen" if self.freeze_layout_var.get() else ""
+        self.play_button_var.set("Pause" if self.simulation_running else "Play")
+        self.sim_summary_var.set(
+            f"{state_text} | Sim {format_sim_time(self.simulation_time_seconds)} | {len(self.agents)} Roman agents | {format_speed_label(self.simulation_speed)}{freeze_suffix}"
+        )
+
+    def apply_simulation_speed(self, _event=None) -> str | None:
+        try:
+            self.simulation_speed = max(0.05, float(self.sim_speed_var.get().rstrip("x")))
+        except ValueError:
+            self.simulation_speed = 1.0
+            self.sim_speed_var.set(format_speed_label(self.simulation_speed))
+        self.update_simulation_summary()
+        if _event is not None:
+            return "break"
+        return None
+
+    def toggle_simulation(self) -> None:
+        self.simulation_running = not self.simulation_running
+        self.last_simulation_tick = time.perf_counter()
+        self.status_var.set("Simulation running inside the Roman camp." if self.simulation_running else "Simulation paused.")
+        self.update_simulation_summary()
+        self.render_stats_and_labels()
+
+    def on_freeze_layout_toggled(self) -> None:
+        if self.freeze_layout_var.get() and self.selected_kind in {"zone", "point", "wall"}:
+            self.clear_selection()
+        self.status_var.set(
+            "Layout frozen. Hover labels still work, but map handles and layout dragging are disabled."
+            if self.freeze_layout_var.get()
+            else "Layout unfrozen. Zones, locations, and walls can be edited again."
+        )
+        self.update_simulation_summary()
+        self.render_all()
+
+    def simulation_bounds_zone(self) -> dict:
+        for zone in self.layout["zones"]:
+            if zone["id"] == ROMAN_SIMULATION_ZONE_ID:
+                return zone
+        for zone in self.layout["zones"]:
+            if zone["type"] == "Camp" and zone["faction"] == "Roman":
+                return zone
+        world_width, world_height = self.world_dimensions()
+        return {
+            "center": {"x": world_width * 0.5, "y": world_height * 0.5},
+            "size": {"x": world_width, "y": world_height},
+            "yawRadians": 0.0,
+        }
+
+    def clamp_agent_position(self, agent: dict, position: dict) -> tuple[dict, bool, bool]:
+        zone = self.simulation_bounds_zone()
+        margin = max(110.0, agent["radius"] * 1.2)
+        local = world_to_local(position, zone["center"], zone["yawRadians"])
+        max_x = max(80.0, zone["size"]["x"] * 0.5 - margin)
+        max_y = max(80.0, zone["size"]["y"] * 0.5 - margin)
+        clamped_local = {
+            "x": clamp(local["x"], -max_x, max_x),
+            "y": clamp(local["y"], -max_y, max_y),
+        }
+        hit_x = abs(clamped_local["x"] - local["x"]) > 0.001
+        hit_y = abs(clamped_local["y"] - local["y"]) > 0.001
+        rotated = local_to_world(clamped_local, zone["yawRadians"])
+        return (
+            {
+                "x": zone["center"]["x"] + rotated["x"],
+                "y": zone["center"]["y"] + rotated["y"],
+            },
+            hit_x,
+            hit_y,
+        )
+
+    def reflected_heading(self, heading_radians: float, zone_yaw_radians: float, bounce_x: bool, bounce_y: bool) -> float:
+        local_heading = heading_radians - zone_yaw_radians
+        local_dx = math.cos(local_heading)
+        local_dy = math.sin(local_heading)
+        if bounce_x:
+            local_dx *= -1.0
+        if bounce_y:
+            local_dy *= -1.0
+        return math.atan2(local_dy, local_dx) + zone_yaw_radians
+
+    def wrap_angle(self, angle_radians: float) -> float:
+        return math.atan2(math.sin(angle_radians), math.cos(angle_radians))
+
+    def step_angle_towards(self, current: float, target: float, max_delta: float) -> float:
+        delta = self.wrap_angle(target - current)
+        if abs(delta) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, delta)
+
+    def on_simulation_frame(self) -> None:
+        now = time.perf_counter()
+        real_dt = min(0.08, max(0.0, now - self.last_simulation_tick))
+        self.last_simulation_tick = now
+        changed = False
+        if self.simulation_running and real_dt > 0.0:
+            changed = self.advance_simulation(real_dt * self.simulation_speed)
+        if changed:
+            self.render_canvas()
+            self.render_stats_and_labels()
+        self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
+
+    def advance_simulation(self, sim_dt: float) -> bool:
+        if sim_dt <= 0.0:
+            return False
+        zone = self.simulation_bounds_zone()
+        any_changed = False
+        self.simulation_time_seconds += sim_dt
+        dragged_agent_id = self.drag_state.get("id") if self.drag_state and self.drag_state.get("type") == "move-agent" else None
+        for agent in self.agents:
+            if dragged_agent_id == agent["id"]:
+                continue
+            agent["decisionTimer"] -= sim_dt
+            if agent["decisionTimer"] <= 0.0:
+                agent["targetHeadingRadians"] = agent["headingRadians"] + self.sim_rng.uniform(-1.7, 1.7)
+                agent["decisionTimer"] = self.sim_rng.uniform(0.35, 1.4)
+            agent["headingRadians"] = self.step_angle_towards(
+                agent["headingRadians"],
+                agent["targetHeadingRadians"],
+                agent["turnRate"] * sim_dt,
+            )
+            proposed = {
+                "x": agent["position"]["x"] + math.cos(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
+                "y": agent["position"]["y"] + math.sin(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
+            }
+            clamped, bounce_x, bounce_y = self.clamp_agent_position(agent, proposed)
+            agent["position"] = clamped
+            if bounce_x or bounce_y:
+                reflected = self.reflected_heading(agent["headingRadians"], zone["yawRadians"], bounce_x, bounce_y)
+                agent["headingRadians"] = reflected
+                agent["targetHeadingRadians"] = reflected + self.sim_rng.uniform(-0.55, 0.55)
+                agent["decisionTimer"] = self.sim_rng.uniform(0.2, 0.9)
+            any_changed = True
+        self.update_simulation_summary()
+        return any_changed
+
+    def agent_visual_radius_pixels(self, agent: dict) -> float:
+        return max(6.0, agent["radius"] * self.view["scale"] * 0.11)
+
+    def agent_hit_radius_world(self, agent: dict) -> float:
+        return (self.agent_visual_radius_pixels(agent) + 8.0) / self.view["scale"]
+
+    def get_agent_by_id(self, agent_id: str | None) -> dict | None:
+        if agent_id is None:
+            return None
+        for agent in self.agents:
+            if agent["id"] == agent_id:
+                return agent
+        return None
+
+    def get_agent_hit(self, world_point: dict) -> dict | None:
+        for agent in reversed(self.agents):
+            if distance(world_point, agent["position"]) <= self.agent_hit_radius_world(agent):
+                return {"kind": "agent", "id": agent["id"]}
+        return None
+
+    def should_draw_agent_label(self, agent: dict) -> bool:
+        return (self.hover_kind == "agent" and self.hover_id == agent["id"]) or (
+            self.selected_kind == "agent" and self.selected_id == agent["id"]
+        )
+
+    def draw_agent(self, agent: dict) -> None:
+        screen = self.world_to_canvas(agent["position"])
+        radius = self.agent_visual_radius_pixels(agent)
+        fill = blend_hex(faction_color(agent["faction"]), "#f7f4ee", 0.18)
+        outline = "#e3bf47" if self.selected_kind == "agent" and self.selected_id == agent["id"] else "#1f1a15"
+        outline_width = 3 if self.selected_kind == "agent" and self.selected_id == agent["id"] else 2
+        facing_length = radius + 8.0
+        self.canvas.create_line(
+            screen["x"],
+            screen["y"],
+            screen["x"] + math.cos(agent["headingRadians"]) * facing_length,
+            screen["y"] + math.sin(agent["headingRadians"]) * facing_length,
+            fill=outline,
+            width=2,
+        )
+        self.canvas.create_oval(
+            screen["x"] - radius,
+            screen["y"] - radius,
+            screen["x"] + radius,
+            screen["y"] + radius,
+            fill=fill,
+            outline=outline,
+            width=outline_width,
+        )
+        core_radius = max(2.0, radius * 0.42)
+        self.canvas.create_oval(
+            screen["x"] - core_radius,
+            screen["y"] - core_radius,
+            screen["x"] + core_radius,
+            screen["y"] + core_radius,
+            fill="#f8f6f1",
+            outline="",
+        )
+
+    def draw_agent_labels(self) -> None:
+        for agent in self.agents:
+            if not self.should_draw_agent_label(agent):
+                continue
+            screen = self.world_to_canvas(agent["position"])
+            radius = self.agent_visual_radius_pixels(agent)
+            badge_fill = blend_hex(faction_color(agent["faction"]), CANVAS_BACKGROUND, 0.76)
+            badge_outline = blend_hex(faction_color(agent["faction"]), "#625b50", 0.34)
+            for candidate_x, candidate_y, anchor in self.point_label_candidates(agent, screen, radius):
+                bbox = self.draw_badge_label(
+                    candidate_x,
+                    candidate_y,
+                    agent["label"],
+                    anchor=anchor,
+                    font=("Segoe UI", max(9, int(self.layout["editor"]["labelFontSize"]) - 1), "bold"),
+                    text_fill="#1f1a15",
+                    background_fill=badge_fill,
+                    outline=badge_outline,
+                    pad_x=7.0,
+                    pad_y=3.0,
+                    register=True,
+                    allow_overlap=False,
+                )
+                if bbox is None:
+                    continue
+                line_end = self.closest_point_on_bbox(screen["x"], screen["y"], bbox)
+                if distance({"x": screen["x"], "y": screen["y"]}, {"x": line_end[0], "y": line_end[1]}) > radius + 9:
+                    self.canvas.create_line(
+                        screen["x"],
+                        screen["y"],
+                        line_end[0],
+                        line_end[1],
+                        fill=badge_outline,
+                        width=1,
+                        tags=(LABEL_LINE_TAG,),
+                    )
+                break
+
+    def on_spacebar_press(self, event: tk.Event) -> str | None:
+        widget = self.root.focus_get() or event.widget
+        widget_class = widget.winfo_class() if widget is not None else ""
+        if widget_class in {"Entry", "TEntry", "Text"}:
+            return None
+        return "break"
+
     def mark_dirty(self, message: str) -> None:
         self.dirty = self.layout != self.saved_layout
         self.status_var.set(message)
         self.update_meta_and_title()
+
+    def clamp_all_agents_to_bounds(self) -> None:
+        for agent in self.agents:
+            clamped_position, _, _ = self.clamp_agent_position(agent, agent["position"])
+            agent["position"] = clamped_position
 
     def commit_layout_change(self, before_state: dict, message: str, *, sync_world: bool = False) -> bool:
         changed = before_state["layout"] != self.layout
@@ -603,6 +979,7 @@ class LayoutEditorApp:
             self._sync_world_controls()
         if changed:
             self.record_undo_state(before_state)
+            self.clamp_all_agents_to_bounds()
             self.mark_dirty(message)
         else:
             self.update_meta_and_title()
@@ -836,11 +1213,16 @@ class LayoutEditorApp:
             self.selection_var.set(
                 f"{selected['label']} selected. Drag the location to move it, drag the east handle to change radius, and drag the facing handle to rotate it."
             )
+        elif self.selected_kind == "agent":
+            self.selection_var.set(
+                f"{selected['label']} selected. Drag the agent freely inside the Roman camp while the simulation runs or pauses. Current speed: {int(round(selected['moveSpeed']))}."
+            )
         else:
             self.selection_var.set(
                 f"{selected['id']} selected. Drag the wall body to move it, or drag either endpoint handle to reshape it."
             )
         self.footer_label.configure(text=self.layout["footer"])
+        self.update_simulation_summary()
 
     def render_tree(self) -> None:
         selection_iid = f"{self.selected_kind}:{self.selected_id}" if self.selected_id else None
@@ -855,6 +1237,10 @@ class LayoutEditorApp:
             points_parent = self.tree.insert("", "end", iid="group-point", text="Locations", open=True)
             for point in self.layout["points"]:
                 self.tree.insert(points_parent, "end", iid=f"point:{point['id']}", text=point["label"])
+
+            agents_parent = self.tree.insert("", "end", iid="group-agent", text="Roman Agents", open=True)
+            for agent in self.agents:
+                self.tree.insert(agents_parent, "end", iid=f"agent:{agent['id']}", text=agent["label"])
 
             walls_parent = self.tree.insert("", "end", iid="group-wall", text="Walls", open=True)
             for wall in self.layout["walls"]:
@@ -879,6 +1265,8 @@ class LayoutEditorApp:
             self.render_zone_inspector(selected)
         elif self.selected_kind == "point":
             self.render_point_inspector(selected)
+        elif self.selected_kind == "agent":
+            self.render_agent_inspector(selected)
         else:
             self.render_wall_inspector(selected)
 
@@ -944,6 +1332,26 @@ class LayoutEditorApp:
         self._inspector_entry("B X", vars_map["bx"], lambda: self._apply_wall_inspector(wall, vars_map))
         self._inspector_entry("B Y", vars_map["by"], lambda: self._apply_wall_inspector(wall, vars_map))
 
+    def render_agent_inspector(self, agent: dict) -> None:
+        vars_map = {
+            "label": tk.StringVar(value=agent["label"]),
+            "x": tk.StringVar(value=str(round(agent["position"]["x"], 2))),
+            "y": tk.StringVar(value=str(round(agent["position"]["y"], 2))),
+            "speed": tk.StringVar(value=str(round(agent["moveSpeed"], 2))),
+            "heading": tk.StringVar(value=str(round(math.degrees(agent["headingRadians"]), 2))),
+        }
+        ttk.Label(
+            self.inspector_body,
+            text="Runtime-only Roman agent. These edits do not change the saved map layout.",
+            wraplength=320,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+        self._inspector_entry("Label", vars_map["label"], lambda: self._apply_agent_inspector(agent, vars_map))
+        self._inspector_entry("Position X", vars_map["x"], lambda: self._apply_agent_inspector(agent, vars_map))
+        self._inspector_entry("Position Y", vars_map["y"], lambda: self._apply_agent_inspector(agent, vars_map))
+        self._inspector_entry("Move Speed", vars_map["speed"], lambda: self._apply_agent_inspector(agent, vars_map))
+        self._inspector_entry("Heading Degrees", vars_map["heading"], lambda: self._apply_agent_inspector(agent, vars_map))
+
     def _inspector_entry(self, label: str, variable: tk.StringVar, callback) -> None:
         frame = ttk.Frame(self.inspector_body)
         frame.pack(fill="x", pady=(0, 8))
@@ -1008,7 +1416,27 @@ class LayoutEditorApp:
             return
         self.commit_layout_change(before_state, "Edited wall. Changes are not saved yet.")
 
+    def _apply_agent_inspector(self, agent: dict, vars_map: dict[str, tk.StringVar]) -> None:
+        try:
+            agent["label"] = vars_map["label"].get().strip() or agent["label"]
+            agent["moveSpeed"] = max(25.0, float(vars_map["speed"].get()))
+            agent["headingRadians"] = math.radians(float(vars_map["heading"].get()))
+            agent["targetHeadingRadians"] = agent["headingRadians"]
+            target_position = {
+                "x": float(vars_map["x"].get()),
+                "y": float(vars_map["y"].get()),
+            }
+        except ValueError:
+            self.status_var.set("Agent inspector ignored until the numbers are valid.")
+            return
+        clamped_position, _, _ = self.clamp_agent_position(agent, target_position)
+        agent["position"] = clamped_position
+        self.status_var.set("Edited runtime agent state.")
+        self.render_all()
+
     def get_selected_item(self) -> dict | None:
+        if self.selected_kind == "agent":
+            return self.get_agent_by_id(self.selected_id)
         items = self.layout[f"{self.selected_kind}s"] if self.selected_kind in {"zone", "point", "wall"} else []
         for item in items:
             if item["id"] == self.selected_id:
@@ -1016,6 +1444,8 @@ class LayoutEditorApp:
         return None
 
     def get_item_by_kind_and_id(self, kind: str, item_id: str | None) -> dict | None:
+        if kind == "agent":
+            return self.get_agent_by_id(item_id)
         if item_id is None or kind not in {"zone", "point", "wall"}:
             return None
         for item in self.layout[f"{kind}s"]:
@@ -1033,6 +1463,8 @@ class LayoutEditorApp:
     def hover_target_from_hit(self, hit: dict | None) -> tuple[str | None, str | None]:
         if not hit:
             return (None, None)
+        if hit["kind"] == "agent":
+            return ("agent", hit["id"])
         if hit["kind"] == "zone":
             return ("zone", hit["id"])
         if hit["kind"] == "point":
@@ -1321,10 +1753,13 @@ class LayoutEditorApp:
                 self.draw_wall(wall)
             for point in self.layout["points"]:
                 self.draw_point(point)
+            for agent in self.agents:
+                self.draw_agent(agent)
             self.draw_point_labels()
+            self.draw_agent_labels()
 
         selected = self.get_selected_item()
-        if selected:
+        if selected and self.selected_kind in {"zone", "point", "wall"} and not self.freeze_layout_var.get():
             self.draw_handles(selected)
 
         top_left = self.world_to_canvas({"x": 0, "y": 0})
@@ -1585,6 +2020,8 @@ class LayoutEditorApp:
         }
 
     def get_handle_hit(self, world_point: dict) -> dict | None:
+        if self.freeze_layout_var.get():
+            return None
         selected = self.get_selected_item()
         if selected is None:
             return None
@@ -1606,6 +2043,10 @@ class LayoutEditorApp:
         return None
 
     def hit_test(self, world_point: dict) -> dict | None:
+        agent_hit = self.get_agent_hit(world_point)
+        if agent_hit:
+            return agent_hit
+
         handle_hit = self.get_handle_hit(world_point)
         if handle_hit:
             return handle_hit
@@ -1648,7 +2089,16 @@ class LayoutEditorApp:
                 self.render_all()
                 return
 
-        if hit["kind"].startswith("zone"):
+        if hit["kind"] in {"zone", "zone-handle", "point", "point-radius", "point-facing", "wall", "wall-endpoint"} and self.freeze_layout_var.get():
+            self.clear_selection()
+            self.status_var.set("Layout is frozen. Uncheck Freeze Layout to edit the map.")
+            self.render_all()
+            return
+
+        if hit["kind"] == "agent":
+            self.selected_kind = "agent"
+            self.selected_id = hit["id"]
+        elif hit["kind"].startswith("zone"):
             self.selected_kind = "zone"
             self.selected_id = hit["id"]
         elif hit["kind"].startswith("point"):
@@ -1685,6 +2135,15 @@ class LayoutEditorApp:
             self.drag_state = {
                 "type": "move-point",
                 "beforeState": before_state,
+                "offset": {
+                    "x": world_point["x"] - item["position"]["x"],
+                    "y": world_point["y"] - item["position"]["y"],
+                },
+            }
+        elif hit["kind"] == "agent":
+            self.drag_state = {
+                "type": "move-agent",
+                "id": item["id"],
                 "offset": {
                     "x": world_point["x"] - item["position"]["x"],
                     "y": world_point["y"] - item["position"]["y"],
@@ -1739,6 +2198,15 @@ class LayoutEditorApp:
                 "x": world_point["x"] - self.drag_state["offset"]["x"],
                 "y": world_point["y"] - self.drag_state["offset"]["y"],
             })
+        elif drag_type == "move-agent":
+            clamped_position, _, _ = self.clamp_agent_position(
+                item,
+                {
+                    "x": world_point["x"] - self.drag_state["offset"]["x"],
+                    "y": world_point["y"] - self.drag_state["offset"]["y"],
+                },
+            )
+            item["position"] = clamped_position
         elif drag_type == "resize-point":
             item["radius"] = max(20.0, distance(world_point, item["position"]))
         elif drag_type == "rotate-point":
@@ -1751,18 +2219,21 @@ class LayoutEditorApp:
         elif drag_type == "move-wall-endpoint":
             item[self.drag_state["endpoint"]] = self.snap_point(world_point)
 
-        self.status_var.set("Editing layout. Changes are not saved yet.")
+        self.status_var.set("Repositioning Roman agent." if drag_type == "move-agent" else "Editing layout. Changes are not saved yet.")
         self.render_canvas()
         self.render_stats_and_labels()
 
     def on_canvas_release(self, _event: tk.Event) -> None:
         if self.drag_state is None:
             return
+        drag_type = self.drag_state.get("type")
         before_state = self.drag_state.get("beforeState")
         self.drag_state = None
         if before_state is not None:
             self.commit_layout_change(before_state, "Edited layout. Changes are not saved yet.")
         else:
+            if drag_type == "move-agent":
+                self.status_var.set("Moved Roman agent.")
             self.render_all()
 
     def on_canvas_pan_press(self, event: tk.Event) -> None:
@@ -1819,9 +2290,11 @@ class LayoutEditorApp:
         hit = self.hit_test(world_point)
         hover_kind, hover_id = self.hover_target_from_hit(hit)
         hover_changed = self.set_hover_target(hover_kind, hover_id)
-        if hit and hit["kind"] in {"zone-handle", "point-radius", "point-facing", "wall-endpoint"}:
+        if hit and hit["kind"] == "agent":
+            self.canvas.configure(cursor="hand2")
+        elif hit and hit["kind"] in {"zone-handle", "point-radius", "point-facing", "wall-endpoint"}:
             self.canvas.configure(cursor="crosshair")
-        elif hit:
+        elif hit and not (self.freeze_layout_var.get() and hit["kind"] in {"zone", "point", "wall"}):
             self.canvas.configure(cursor="fleur")
         else:
             self.canvas.configure(cursor="")
