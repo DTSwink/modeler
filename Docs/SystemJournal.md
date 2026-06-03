@@ -166,10 +166,10 @@ The editor currently supports:
 - Explicit save into `data/current_layout.json`.
 - Camp sub-areas for tents, infirmaries, and training grounds.
 - Background grass implied by absence of a specific zone, so the old grass hallway authoring zone has been removed.
-- First Roman-side runtime sandbox with five prototype agents moving inside the authored Roman camp.
+- First Roman-side runtime sandbox with five prototype agents spawning from the authored Roman camp, then roaming across the full authored map.
 - In-editor `Play` / `Pause` plus time-speed control for compression and dilation while the scene keeps rendering at the normal UI cadence.
 - Agent drag-and-drop without leaving the editor.
-- Roman camp hard borders for the current prototype, with pathfinding intentionally deferred.
+- Agent coordinates capped by the full map extents for the current prototype, with pathfinding intentionally deferred.
 - `Freeze Layout` toggle so hover inspection can stay active while map handles, map selection drags, and layout edits are suppressed.
 - Layout editing remains available while the simulation is running whenever `Freeze Layout` is off.
 - Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
@@ -179,7 +179,7 @@ The important modeling rule here is that the viewer is now carrying simulation i
 
 The important UI rule is that whole-scene readability wins over showing every label at once. The current default is hover-driven labels, so the authored map stays legible before we add moving agents on top.
 
-The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, and `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
+The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, spawns from the Roman camp, and can roam across the whole authored space while `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
@@ -219,9 +219,9 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 14. Click `Save Layout` or press `Ctrl+S`.
 15. Confirm those edits appear in `data/current_layout.json`.
 16. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
-17. Click `Play` and confirm five Roman agents begin moving inside the Roman camp.
+17. Click `Play` and confirm five Roman agents begin moving across the map after spawning from the Roman camp.
 18. Change the simulation speed and confirm motion slows down or speeds up accordingly.
-19. Drag an agent and confirm it remains inside the Roman camp bounds.
+19. Drag an agent and confirm its coordinates remain capped by the map bounds instead of the Roman camp footprint.
 20. Toggle `Freeze Layout` on and confirm layout handles do not appear and map drags are blocked while hover inspection still works.
 21. Toggle `Freeze Layout` off and confirm layout editing resumes immediately, even while the simulation is still running.
 22. Press the spacebar after using toolbar buttons and confirm it toggles simulation instead of retriggering the previous button action.

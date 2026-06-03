@@ -406,7 +406,7 @@ class LayoutEditorApp:
         return layout
 
     def build_initial_agents(self) -> list[dict]:
-        zone = self.simulation_bounds_zone()
+        zone = self.simulation_spawn_zone()
         rng = random.Random(1337)
         agents: list[dict] = []
         for index in range(ROMAN_AGENT_COUNT):
@@ -492,7 +492,7 @@ class LayoutEditorApp:
         simulation_frame.columnconfigure((0, 1, 2), weight=1)
         ttk.Label(
             simulation_frame,
-            text="Roman prototype: five agents wander inside the Roman camp at 60 FPS. Play keeps the layout live unless Freeze Layout is checked.",
+            text="Roman prototype: five agents spawn in the Roman camp, then wander across the full map at 60 FPS. Play keeps the layout live unless Freeze Layout is checked.",
             wraplength=320,
             justify="left",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
@@ -787,7 +787,7 @@ class LayoutEditorApp:
     def toggle_simulation(self) -> None:
         self.simulation_running = not self.simulation_running
         self.last_simulation_tick = time.perf_counter()
-        self.status_var.set("Simulation running inside the Roman camp." if self.simulation_running else "Simulation paused.")
+        self.status_var.set("Simulation running across the map." if self.simulation_running else "Simulation paused.")
         self.update_simulation_summary()
         self.render_stats_and_labels()
 
@@ -802,7 +802,7 @@ class LayoutEditorApp:
         self.update_simulation_summary()
         self.render_all()
 
-    def simulation_bounds_zone(self) -> dict:
+    def simulation_spawn_zone(self) -> dict:
         for zone in self.layout["zones"]:
             if zone["id"] == ROMAN_SIMULATION_ZONE_ID:
                 return zone
@@ -817,36 +817,17 @@ class LayoutEditorApp:
         }
 
     def clamp_agent_position(self, agent: dict, position: dict) -> tuple[dict, bool, bool]:
-        zone = self.simulation_bounds_zone()
+        world_width, world_height = self.world_dimensions()
         margin = max(110.0, agent["radius"] * 1.2)
-        local = world_to_local(position, zone["center"], zone["yawRadians"])
-        max_x = max(80.0, zone["size"]["x"] * 0.5 - margin)
-        max_y = max(80.0, zone["size"]["y"] * 0.5 - margin)
-        clamped_local = {
-            "x": clamp(local["x"], -max_x, max_x),
-            "y": clamp(local["y"], -max_y, max_y),
+        max_x = max(margin, world_width - margin)
+        max_y = max(margin, world_height - margin)
+        clamped_position = {
+            "x": clamp(position["x"], margin, max_x),
+            "y": clamp(position["y"], margin, max_y),
         }
-        hit_x = abs(clamped_local["x"] - local["x"]) > 0.001
-        hit_y = abs(clamped_local["y"] - local["y"]) > 0.001
-        rotated = local_to_world(clamped_local, zone["yawRadians"])
-        return (
-            {
-                "x": zone["center"]["x"] + rotated["x"],
-                "y": zone["center"]["y"] + rotated["y"],
-            },
-            hit_x,
-            hit_y,
-        )
-
-    def reflected_heading(self, heading_radians: float, zone_yaw_radians: float, bounce_x: bool, bounce_y: bool) -> float:
-        local_heading = heading_radians - zone_yaw_radians
-        local_dx = math.cos(local_heading)
-        local_dy = math.sin(local_heading)
-        if bounce_x:
-            local_dx *= -1.0
-        if bounce_y:
-            local_dy *= -1.0
-        return math.atan2(local_dy, local_dx) + zone_yaw_radians
+        hit_x = abs(clamped_position["x"] - position["x"]) > 0.001
+        hit_y = abs(clamped_position["y"] - position["y"]) > 0.001
+        return (clamped_position, hit_x, hit_y)
 
     def wrap_angle(self, angle_radians: float) -> float:
         return math.atan2(math.sin(angle_radians), math.cos(angle_radians))
@@ -872,7 +853,6 @@ class LayoutEditorApp:
     def advance_simulation(self, sim_dt: float) -> bool:
         if sim_dt <= 0.0:
             return False
-        zone = self.simulation_bounds_zone()
         any_changed = False
         self.simulation_time_seconds += sim_dt
         dragged_agent_id = self.drag_state.get("id") if self.drag_state and self.drag_state.get("type") == "move-agent" else None
@@ -892,13 +872,11 @@ class LayoutEditorApp:
                 "x": agent["position"]["x"] + math.cos(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
                 "y": agent["position"]["y"] + math.sin(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
             }
-            clamped, bounce_x, bounce_y = self.clamp_agent_position(agent, proposed)
+            clamped, hit_x, hit_y = self.clamp_agent_position(agent, proposed)
             agent["position"] = clamped
-            if bounce_x or bounce_y:
-                reflected = self.reflected_heading(agent["headingRadians"], zone["yawRadians"], bounce_x, bounce_y)
-                agent["headingRadians"] = reflected
-                agent["targetHeadingRadians"] = reflected + self.sim_rng.uniform(-0.55, 0.55)
-                agent["decisionTimer"] = self.sim_rng.uniform(0.2, 0.9)
+            if hit_x or hit_y:
+                agent["targetHeadingRadians"] = self.sim_rng.uniform(0.0, math.tau)
+                agent["decisionTimer"] = self.sim_rng.uniform(0.12, 0.35)
             any_changed = True
         self.update_simulation_summary()
         return any_changed
@@ -1271,7 +1249,7 @@ class LayoutEditorApp:
             )
         elif self.selected_kind == "agent":
             self.selection_var.set(
-                f"{selected['label']} selected. Drag the agent freely inside the Roman camp while the simulation runs or pauses. Current speed: {int(round(selected['moveSpeed']))}."
+                f"{selected['label']} selected. Drag the agent freely across the map while the simulation runs or pauses. Current speed: {int(round(selected['moveSpeed']))}."
             )
         else:
             self.selection_var.set(

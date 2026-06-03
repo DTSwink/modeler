@@ -4,7 +4,7 @@ Engine-independent core for the Roman vs Ottoman 2D agent simulation.
 
 The native layout editor in this repo is not just a preview. It is the live authoring surface for the future simulation, and the saved layout data here should be treated as the next blocks' input map.
 
-The same native editor is now also the first runtime sandbox. Roman-side prototype agents move inside the authored Roman camp, so layout work and early simulation debugging happen in one place instead of splitting across tools.
+The same native editor is now also the first runtime sandbox. Roman-side prototype agents spawn from the authored Roman camp, then roam across the full authored map, so layout work and early simulation debugging happen in one place instead of splitting across tools.
 
 For UI cleanup and readability review, prefer user-provided screenshots plus background or headless checks before foreground launches when possible. That lets us tune the editor without taking over the active screen.
 
@@ -63,9 +63,9 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 8. Confirm mouse-wheel zoom and right-drag panning work on the map.
 9. Change `Label Text Size` and confirm the on-map text updates.
 10. Confirm the tent, infirmary, and training areas exist inside each camp, and the old grass hallway is gone.
-11. Click `Play` and confirm five Roman agents begin wandering inside the Roman camp.
+11. Click `Play` and confirm five Roman agents begin wandering across the map.
 12. Change the simulation speed and confirm time dilation/compression visibly changes agent motion.
-13. Drag an agent and confirm it stays clamped inside the Roman camp bounds.
+13. Drag an agent and confirm its coordinates stay capped by the map extents rather than the Roman camp footprint.
 14. Toggle `Freeze Layout` on and confirm hovering still works while layout handles and map drag edits stop responding.
 15. Toggle `Freeze Layout` off and confirm zones, locations, and walls are editable again even if the simulation is still running.
 16. Press the spacebar and confirm it toggles play/pause instead of retriggering the last button action.
