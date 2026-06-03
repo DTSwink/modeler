@@ -43,6 +43,26 @@ UI readability matters now, not later. The editor is heading toward agent overla
 
 The simulation surface should stay unified with the authoring surface. Early runtime behavior is supposed to read from the same authored layout the user is editing, not from a detached mock scene.
 
+## Modularity Rule
+
+Build every new feature so it can be improved, replaced, or debugged in isolation later without forcing a rewrite of the whole project.
+
+This is not optional. It is a hard architecture rule for all future blocks.
+
+What that means in practice:
+
+- Keep layout authoring, runtime simulation, validation, rendering, and future AI logic as separate layers with clear data handoffs.
+- Prefer small focused functions and data transforms over giant mixed control paths.
+- Do not bury core simulation rules inside UI event handlers if they can live in reusable logic instead.
+- Do not make one system reach deep into another system's private state when a narrow interface or explicit data contract will do.
+- When adding a new behavior, assume we will want to tune or replace just that behavior later without breaking layout editing, saving, rendering, or unrelated simulation systems.
+- When adding Ottoman-side logic later, mirror shared behavior through reusable structures instead of cloning Roman-only code paths everywhere.
+- When pathfinding, combat, needs, perception, orders, and Unreal integration arrive, each of those should be able to evolve mostly independently behind stable boundaries.
+
+The target shape is a set of cooperating modules, not one growing script-ball.
+
+If a change makes the code easier to ship right now but harder to upgrade safely later, that trade should be treated as suspicious and documented explicitly before accepting it.
+
 ## Project Shape
 
 Important files:
@@ -180,6 +200,8 @@ The important modeling rule here is that the viewer is now carrying simulation i
 The important UI rule is that whole-scene readability wins over showing every label at once. The current default is hover-driven labels, so the authored map stays legible before we add moving agents on top.
 
 The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, spawns from the Roman camp, and can roam across the whole authored space while `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
+
+The important implementation rule is that even if the current native editor hosts several responsibilities in one app, each new system added to it should still be written as if it may be extracted, upgraded, or swapped later. Avoid tightly coupling saving, camera control, layout editing, agent stepping, and future gameplay rules into one indivisible block.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
