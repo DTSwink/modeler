@@ -14,7 +14,7 @@ Update this journal after every implementation block or meaningful architecture 
 
 Saved layout JSON is project state, not disposable local scratch. When the user saves a layout or asks for implementation work that depends on the current authored map, commit `data/current_layout.json` with the related code/docs unless the user explicitly says not to.
 
-Do not push commits to the remote unless the user explicitly asks for a push. Local commits are allowed when they make the work recoverable and coherent.
+Remote publication requires an explicit user request. Local commits are allowed when they make the work recoverable and coherent.
 
 ## Current Stop Point
 
@@ -75,6 +75,7 @@ If a change makes the code easier to ship right now but harder to upgrade safely
 Important files:
 
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
+- `agent_panel.py`: isolated reloadable Tk widget for the selected-agent attribute panel.
 - `agent_state.py`: isolated headless agent-state defaults and attribute-snapshot helpers.
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
@@ -192,7 +193,7 @@ The editor currently supports:
 - Label badges, label text, and label connector lines raised above geometry so dense camp details stay readable while editing.
 - Tent areas now read as grey, infirmaries as light/white, and training areas as orange in the saved layouts and editor defaults.
 - A visible UI build stamp plus refresh-needed title state when the editor code on disk is newer than the running window.
-- An in-app `Refresh App` action plus `Ctrl+R` to relaunch into the newest editor build without a manual close/reopen cycle.
+- An in-app `Refresh App` action plus `Ctrl+R` to reload extracted dynamic modules in the current editor window.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
 - Explicit save into `data/current_layout.json`.
@@ -212,11 +213,15 @@ The editor currently supports:
 - The old footer selection text is hidden while an agent is selected so it does not compete with the agent attribute panel.
 - Roman agents now carry modular headless `needs` and `health` state, starting with `hunger`, `thirst`, and `status`.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
-- Shared geometry, authored-layout normalization, and agent-state snapshot/default helpers now also live in isolated headless helper modules instead of being owned by the Tk app.
+- Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
+
+`Refresh App` now reloads `agent_state.py` and `agent_panel.py` in-process with `importlib.reload`, rebuilds the affected widget, and redraws the current window. Full edits to `ModelerLayoutEditor.pyw` still require one real editor restart because the main Tk shell owns bindings, menus, layout scaffolding, and process-level app identity. Future frequently edited UI should be extracted into reloadable modules so small changes can apply without closing the current editor.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
 The important UI rule is that whole-scene readability wins over showing every label at once. The current default is hover-driven labels, so the authored map stays legible before we add moving agents on top.
+
+For visual verification, do not spawn foreground app windows over the user's active work. Prefer user screenshots, hidden/headless checks, and in-place module refreshes in the already-open editor. Avoid PowerShell wrappers for verification; if a command is unavoidable, run it hidden from the Node REPL workflow.
 
 The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, spawns from the Roman camp, and can roam across the whole authored space while `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
 

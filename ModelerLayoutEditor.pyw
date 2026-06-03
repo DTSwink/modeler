@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import math
 import subprocess
 import sys
@@ -9,7 +10,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from agent_state import agent_snapshot_sections
+import agent_panel
+import agent_state
 from editor_runtime import RomanSimulationRuntime
 from editor_view_state import read_saved_view, write_saved_view
 from layout_document import deep_copy, normalize_layout, read_json, write_json
@@ -64,6 +66,10 @@ RENDER_FRAME_INTERVAL_SECONDS = 1.0 / 30.0
 SIMULATION_SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 ROMAN_SIMULATION_ZONE_ID = "zone-roman-camp"
 ROMAN_AGENT_COUNT = 5
+DYNAMIC_RELOAD_MODULES = [
+    agent_state,
+    agent_panel,
+]
 SPACEBAR_TEXT_INPUT_CLASSES = {
     "Entry",
     "TEntry",
@@ -222,7 +228,9 @@ class LayoutEditorApp:
         self.root.geometry("1500x920")
         self.root.minsize(1180, 760)
         self.loaded_build_mtime = SCRIPT_PATH.stat().st_mtime
+        self.loaded_dynamic_module_mtimes = self.current_dynamic_module_mtimes()
         self.restart_needed = False
+        self.dynamic_reload_needed = False
 
         self.default_layout = read_json(DEFAULT_LAYOUT_PATH)
         self.layout = self._load_current_layout()
@@ -241,6 +249,8 @@ class LayoutEditorApp:
         self.undo_stack: list[dict] = []
         self.max_undo_states = 80
         self.label_boxes: list[tuple[float, float, float, float]] = []
+        self.canvas_frame = None
+        self.agent_panel_view = None
         self.suppress_tree_event = False
         self.status_var = tk.StringVar(value="Ready. Click Save Layout to keep changes in data/current_layout.json.")
         self.meta_var = tk.StringVar()
@@ -436,6 +446,7 @@ class LayoutEditorApp:
         canvas_frame.grid(row=1, column=0, sticky="nsew")
         canvas_frame.columnconfigure(0, weight=1)
         canvas_frame.rowconfigure(0, weight=1)
+        self.canvas_frame = canvas_frame
 
         self.canvas = tk.Canvas(canvas_frame, bg="#ece5d6", highlightthickness=1, highlightbackground="#b7ab98")
         self.canvas.grid(row=0, column=0, sticky="nsew")
@@ -453,25 +464,7 @@ class LayoutEditorApp:
         self.canvas.bind("<Leave>", self.on_canvas_leave)
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
 
-        self.agent_details_frame = ttk.LabelFrame(canvas_frame, text="", padding=8)
-        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=285, height=132)
-        self.agent_details_frame.place_forget()
-        self.agent_details_frame.columnconfigure(0, weight=1)
-        self.agent_details_frame.rowconfigure(0, weight=1)
-        self.agent_details_tree = ttk.Treeview(
-            self.agent_details_frame,
-            show="tree",
-            height=5,
-            selectmode="none",
-        )
-        self.agent_details_tree.column("#0", width=250, minwidth=190, stretch=True)
-        self.agent_details_tree.grid(row=0, column=0, sticky="nsew")
-        agent_details_scrollbar = ttk.Scrollbar(self.agent_details_frame, orient="vertical", command=self.agent_details_tree.yview)
-        agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
-        self.agent_details_tree.configure(yscrollcommand=agent_details_scrollbar.set)
-        self.agent_details_tree.bind("<MouseWheel>", self.on_agent_details_mousewheel)
-        self.agent_details_tree.bind("<Button-4>", self.on_agent_details_mousewheel)
-        self.agent_details_tree.bind("<Button-5>", self.on_agent_details_mousewheel)
+        self.agent_panel_view = agent_panel.AgentPanelView(canvas_frame, self.on_agent_details_mousewheel)
         self.root.bind("<Control-s>", self.save_layout_now)
         self.root.bind("<Control-r>", self.refresh_app)
         self.root.bind("<Control-z>", self.undo_last_change)
@@ -509,12 +502,8 @@ class LayoutEditorApp:
         return button
 
     def on_agent_details_mousewheel(self, event: tk.Event) -> str:
-        if getattr(event, "delta", 0):
-            self.agent_details_tree.yview_scroll(int(-event.delta / 120), "units")
-        elif getattr(event, "num", None) == 4:
-            self.agent_details_tree.yview_scroll(-1, "units")
-        elif getattr(event, "num", None) == 5:
-            self.agent_details_tree.yview_scroll(1, "units")
+        if self.agent_panel_view is not None:
+            self.agent_panel_view.scroll(event)
         return "break"
 
     def _sync_world_controls(self) -> None:
@@ -597,6 +586,24 @@ class LayoutEditorApp:
             return
         self.last_agent_details_id = agent_id
 
+    def current_dynamic_module_mtimes(self) -> dict[str, float]:
+        mtimes: dict[str, float] = {}
+        for module in DYNAMIC_RELOAD_MODULES:
+            module_path = getattr(module, "__file__", None)
+            if not module_path:
+                continue
+            try:
+                mtimes[module.__name__] = Path(module_path).stat().st_mtime
+            except OSError:
+                mtimes[module.__name__] = 0.0
+        return mtimes
+
+    def rebuild_dynamic_widgets(self) -> None:
+        if self.agent_panel_view is not None:
+            self.agent_panel_view.destroy()
+        if self.canvas_frame is not None:
+            self.agent_panel_view = agent_panel.AgentPanelView(self.canvas_frame, self.on_agent_details_mousewheel)
+
     def apply_snapshot(self, snapshot: dict) -> None:
         self.layout = self._normalize_layout(snapshot["layout"])
         self.selected_kind = snapshot.get("selected_kind", "zone")
@@ -611,12 +618,15 @@ class LayoutEditorApp:
 
     def update_meta_and_title(self) -> None:
         build_text = f"UI {format_build_stamp(self.loaded_build_mtime)}"
-        restart_text = " | Refresh to load newer UI" if self.restart_needed else ""
+        reload_text = " | Refresh modules available" if self.dynamic_reload_needed else ""
+        restart_text = " | Restart needed for editor shell" if self.restart_needed else ""
         dirty_suffix = " | Unsaved changes" if self.dirty else ""
-        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']} | {build_text}{restart_text}{dirty_suffix}")
+        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']} | {build_text}{reload_text}{restart_text}{dirty_suffix}")
         title = self.window_title_base
         if self.restart_needed:
-            title += " - Refresh Needed"
+            title += " - Restart Needed"
+        elif self.dynamic_reload_needed:
+            title += " - Module Refresh Available"
         if self.dirty:
             title += "*"
         self.root.title(title)
@@ -626,6 +636,11 @@ class LayoutEditorApp:
             self.restart_needed = SCRIPT_PATH.stat().st_mtime > self.loaded_build_mtime + 0.5
         except OSError:
             self.restart_needed = False
+        current_mtimes = self.current_dynamic_module_mtimes()
+        self.dynamic_reload_needed = any(
+            current_mtimes.get(name, 0.0) > self.loaded_dynamic_module_mtimes.get(name, 0.0) + 0.5
+            for name in current_mtimes
+        )
         self.update_meta_and_title()
         self.root.after(2500, self.poll_for_editor_code_update)
 
@@ -988,21 +1003,25 @@ class LayoutEditorApp:
         return True
 
     def refresh_app(self, _event=None) -> str | None:
-        if not self.confirm_unsaved_action("refreshing the editor"):
-            if _event is not None:
-                return "break"
-            return None
-        if not self.dirty:
-            self.persist_saved_view_state()
-            write_json(CURRENT_LAYOUT_PATH, self.layout)
+        global agent_state, agent_panel, DYNAMIC_RELOAD_MODULES
         try:
-            subprocess.Popen([sys.executable, str(SCRIPT_PATH)], cwd=str(ROOT))
+            importlib.invalidate_caches()
+            agent_state = importlib.reload(agent_state)
+            agent_panel = importlib.reload(agent_panel)
+            DYNAMIC_RELOAD_MODULES = [
+                agent_state,
+                agent_panel,
+            ]
+            self.rebuild_dynamic_widgets()
+            self.loaded_dynamic_module_mtimes = self.current_dynamic_module_mtimes()
+            self.dynamic_reload_needed = False
+            self.status_var.set("Reloaded dynamic UI modules in the current window.")
+            self.render_all()
         except Exception as error:
-            messagebox.showerror("Refresh Failed", f"Could not refresh the editor.\n\n{error}")
+            messagebox.showerror("Refresh Failed", f"Could not reload dynamic UI modules.\n\n{error}")
             if _event is not None:
                 return "break"
             return None
-        self.root.destroy()
         if _event is not None:
             return "break"
         return None
@@ -1121,38 +1140,24 @@ class LayoutEditorApp:
             self.render_wall_inspector(selected)
 
     def render_agent_details_panel(self, *, force: bool = True) -> None:
+        if self.agent_panel_view is None:
+            return
         if self.selected_kind != "agent":
             self.clear_agent_details()
-            self.agent_details_frame.place_forget()
+            self.agent_panel_view.hide()
             return
 
         agent = self.get_agent_by_id(self.selected_id)
         if agent is None:
             self.clear_agent_details()
-            self.agent_details_frame.place_forget()
+            self.agent_panel_view.hide()
             return
         self.remember_last_clicked_agent(agent["id"])
-        self.agent_details_frame.configure(text=agent["label"])
         now = time.perf_counter()
         if not force and now - self.last_agent_details_refresh < 0.25:
             return
         self.last_agent_details_refresh = now
-        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=285, height=132)
-
-        self.agent_details_tree.delete(*self.agent_details_tree.get_children())
-        for section in agent_snapshot_sections(agent):
-            section_id = f"section:{section['title']}"
-            self.agent_details_tree.insert("", "end", iid=section_id, text=section["title"], open=True)
-            for row in section["rows"]:
-                value = self.format_agent_detail_value(row)
-                self.agent_details_tree.insert(section_id, "end", text=f"{row['label']}: {value}")
-
-    def format_agent_detail_value(self, row: dict) -> str:
-        if row.get("kind") == "meter":
-            maximum = max(1, int(row.get("maximum", 100)))
-            value = max(0, min(maximum, int(row["value"])))
-            return f"{value}/{maximum}"
-        return str(row["value"])
+        self.agent_panel_view.show_agent(agent)
 
     def render_zone_inspector(self, zone: dict) -> None:
         vars_map = {
