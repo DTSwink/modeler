@@ -231,10 +231,11 @@ When running background visual checks, do not use a PowerShell wrapper that can 
 Use this workflow instead:
 
 1. Run `tools/verification/VisualCheckAgentPanel.pyw` through the Node REPL with `child_process.spawn(..., { windowsHide: true })`.
-2. Read `Build/verification/visual_eye_check_agent_panel.json`.
-3. Inspect `Build/verification/visual_eye_check_agent_panel.png` with `view_image`.
-4. Trust the result only if the JSON says `ok: true` and the PNG visually shows the expected UI.
-5. Make sure no stale Modeler verifier/editor processes remain.
+2. Let the verifier configure its Tk window as a no-activate tool window, send it to the bottom of the z-order, capture it, and close it.
+3. Read `Build/verification/visual_eye_check_agent_panel.json`.
+4. Inspect `Build/verification/visual_eye_check_agent_panel.png` with `view_image`.
+5. Trust the result only if the JSON says `ok: true` and the PNG visually shows the expected UI.
+6. Make sure no stale Modeler verifier/editor processes remain.
 
 This is specifically to avoid stealing focus, opening PowerShell, or disturbing other user work.
 

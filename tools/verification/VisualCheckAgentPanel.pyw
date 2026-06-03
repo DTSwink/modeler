@@ -18,6 +18,18 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 PNG_PATH = OUT_DIR / "visual_eye_check_agent_panel.png"
 RESULT_PATH = OUT_DIR / "visual_eye_check_agent_panel.json"
 
+GWL_EXSTYLE = -20
+HWND_BOTTOM = 1
+SW_SHOWNOACTIVATE = 4
+SWP_NOACTIVATE = 0x0010
+SWP_SHOWWINDOW = 0x0040
+VERIFY_HEIGHT = 920
+VERIFY_WIDTH = 1500
+VERIFY_X = 8
+VERIFY_Y = 8
+WS_EX_NOACTIVATE = 0x08000000
+WS_EX_TOOLWINDOW = 0x00000080
+
 
 def write_result(payload: dict) -> None:
     RESULT_PATH.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -30,6 +42,37 @@ def load_editor_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def configure_nonintrusive_window(window: tk.Tk) -> None:
+    window.geometry(f"{VERIFY_WIDTH}x{VERIFY_HEIGHT}+{VERIFY_X}+{VERIFY_Y}")
+    window.overrideredirect(True)
+    try:
+        window.attributes("-toolwindow", True)
+    except tk.TclError:
+        pass
+    window.update_idletasks()
+
+    hwnd = ctypes.wintypes.HWND(window.winfo_id())
+    user32 = ctypes.windll.user32
+    current_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    user32.SetWindowLongW(
+        hwnd,
+        GWL_EXSTYLE,
+        current_style | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+    )
+    window.deiconify()
+    window.update_idletasks()
+    user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+    user32.SetWindowPos(
+        hwnd,
+        HWND_BOTTOM,
+        VERIFY_X,
+        VERIFY_Y,
+        VERIFY_WIDTH,
+        VERIFY_HEIGHT,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW,
+    )
 
 
 def capture_window(window: tk.Tk) -> tuple[Image.Image, dict]:
@@ -107,11 +150,10 @@ def main() -> None:
     try:
         module = load_editor_module()
         root = tk.Tk()
-        root.geometry("1500x920+8+8")
-        root.overrideredirect(True)
-        root.attributes("-alpha", 0.01)
+        root.withdraw()
 
         app = module.LayoutEditorApp(root)
+        configure_nonintrusive_window(root)
         agent = app.simulation.agents[0]
         app.selected_kind = "agent"
         app.selected_id = agent["id"]
