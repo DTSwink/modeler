@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+from typing import Callable
 
 import agent_state
+import editor_command_bridge
 
 
 PANEL_WIDTH = 285
@@ -12,7 +14,14 @@ TREE_WIDTH = 250
 
 
 class AgentPanelView:
-    def __init__(self, parent: ttk.Frame, mousewheel_callback) -> None:
+    def __init__(
+        self,
+        parent: ttk.Frame,
+        mousewheel_callback,
+        refresh_callback: Callable[[dict], str | None] | None = None,
+    ) -> None:
+        self.root = parent.winfo_toplevel()
+        self.refresh_callback = refresh_callback
         self.frame = ttk.LabelFrame(parent, text="", padding=8)
         self.frame.place(x=0, rely=1.0, y=0, anchor="sw", width=PANEL_WIDTH, height=PANEL_HEIGHT)
         self.frame.place_forget()
@@ -35,6 +44,13 @@ class AgentPanelView:
         self.tree.bind("<MouseWheel>", mousewheel_callback)
         self.tree.bind("<Button-4>", mousewheel_callback)
         self.tree.bind("<Button-5>", mousewheel_callback)
+        editor_command_bridge.install_tk_command_bridge(
+            self.root,
+            {
+                editor_command_bridge.ACTION_REFRESH: self.handle_refresh_command,
+                editor_command_bridge.ACTION_PING: self.handle_ping_command,
+            },
+        )
 
     def destroy(self) -> None:
         self.frame.destroy()
@@ -60,6 +76,15 @@ class AgentPanelView:
             self.tree.yview_scroll(-1, "units")
         elif getattr(event, "num", None) == 5:
             self.tree.yview_scroll(1, "units")
+
+    def handle_refresh_command(self, command: dict) -> str:
+        if self.refresh_callback is not None:
+            return self.refresh_callback(command) or "Reloaded dynamic UI modules in the current window."
+        self.root.event_generate("<Control-r>", when="tail")
+        return "Refresh event queued in the editor window."
+
+    def handle_ping_command(self, _command: dict) -> str:
+        return "Modeler editor is alive."
 
 
 def format_agent_detail_value(row: dict) -> str:

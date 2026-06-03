@@ -6,7 +6,7 @@ The native layout editor in this repo is not just a preview. It is the live auth
 
 The same native editor is now also the first runtime sandbox. Roman-side prototype agents spawn from the authored Roman camp, then roam across the full authored map, so layout work and early simulation debugging happen in one place instead of splitting across tools.
 
-The runtime stepping logic, saved camera-state logic, and selected-agent panel are now split into dedicated helper modules so those behaviors can evolve without forcing unrelated editor UI changes.
+The runtime stepping logic, saved camera-state logic, selected-agent panel, and background command bridge are now split into dedicated helper modules so those behaviors can evolve without forcing unrelated editor UI changes.
 
 Headless agent-state defaults and agent-attribute snapshot helpers now also live in a dedicated module, so needs and health can grow without baking UI assumptions into the runtime stepper.
 
@@ -27,6 +27,8 @@ Double-click `StartModeler.bat` to launch the local editor window from Windows.
 The launcher is meant to open the latest editor build. If editor code changed on disk after a window was already running, a fresh instance should open instead of reviving the stale one. The editor title and top metadata also carry a UI build stamp so outdated windows are easier to spot.
 
 Inside the editor, use `Refresh App` or `Ctrl+R` to reload dynamic modules in the current window. Full changes to the main editor shell still need one normal reopen, but future frequently changed UI should be moved into reloadable modules.
+
+For background control of an already-open editor, run `tools/control/SendEditorCommand.py refresh --wait 5` from a hidden process. It writes a small command JSON file, the open editor handles it in-place, then writes a matching status JSON file.
 
 Open `RunBlock0ASmoke.exe` to launch the current pure C++ smoke test without typing commands.
 
@@ -56,6 +58,7 @@ Block 0A has been corrected to be engine-independent:
 - Compact lower-left viewer panel titled with the selected agent label, showing hunger, thirst, status, and other runtime attributes.
 - Agent selection hides the old footer text so the attribute panel is the only active agent readout.
 - `Refresh App` reloads extracted dynamic modules in place instead of closing and reopening the editor window.
+- Hidden command bridge for `refresh` and `ping` against the already-open editor window.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -85,6 +88,8 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 20. Click a Roman agent and confirm the compact lower-left viewer panel appears with that agent's label as its title.
 21. Click a non-agent map object and confirm the `Agent Attributes` panel hides.
 22. Confirm the pane shows status, hunger `100/100`, and thirst `100/100` before identity details.
-23. Open `RunBlock0ASmoke.exe`.
-24. Confirm the console reports marker counts.
-25. Confirm it prints `Block 0A pure core smoke test passed.`
+23. Send `tools/control/SendEditorCommand.py ping --wait 5` from a hidden process and confirm the status reports the editor is alive.
+24. Send `tools/control/SendEditorCommand.py refresh --wait 5` from a hidden process and confirm the open editor process stays alive.
+25. Open `RunBlock0ASmoke.exe`.
+26. Confirm the console reports marker counts.
+27. Confirm it prints `Block 0A pure core smoke test passed.`

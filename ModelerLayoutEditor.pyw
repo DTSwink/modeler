@@ -464,7 +464,11 @@ class LayoutEditorApp:
         self.canvas.bind("<Leave>", self.on_canvas_leave)
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
 
-        self.agent_panel_view = agent_panel.AgentPanelView(canvas_frame, self.on_agent_details_mousewheel)
+        self.agent_panel_view = agent_panel.AgentPanelView(
+            canvas_frame,
+            self.on_agent_details_mousewheel,
+            refresh_callback=self.handle_command_bridge_refresh,
+        )
         self.root.bind("<Control-s>", self.save_layout_now)
         self.root.bind("<Control-r>", self.refresh_app)
         self.root.bind("<Control-z>", self.undo_last_change)
@@ -602,7 +606,11 @@ class LayoutEditorApp:
         if self.agent_panel_view is not None:
             self.agent_panel_view.destroy()
         if self.canvas_frame is not None:
-            self.agent_panel_view = agent_panel.AgentPanelView(self.canvas_frame, self.on_agent_details_mousewheel)
+            self.agent_panel_view = agent_panel.AgentPanelView(
+                self.canvas_frame,
+                self.on_agent_details_mousewheel,
+                refresh_callback=self.handle_command_bridge_refresh,
+            )
 
     def apply_snapshot(self, snapshot: dict) -> None:
         self.layout = self._normalize_layout(snapshot["layout"])
@@ -1002,7 +1010,17 @@ class LayoutEditorApp:
             self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
         return True
 
-    def refresh_app(self, _event=None) -> str | None:
+    def handle_command_bridge_refresh(self, _command: dict) -> str:
+        self.refresh_app(show_error_dialog=False, raise_errors=True)
+        return "Reloaded dynamic UI modules in the current window."
+
+    def refresh_app(
+        self,
+        _event=None,
+        *,
+        show_error_dialog: bool = True,
+        raise_errors: bool = False,
+    ) -> str | None:
         global agent_state, agent_panel, DYNAMIC_RELOAD_MODULES
         try:
             importlib.invalidate_caches()
@@ -1018,7 +1036,11 @@ class LayoutEditorApp:
             self.status_var.set("Reloaded dynamic UI modules in the current window.")
             self.render_all()
         except Exception as error:
-            messagebox.showerror("Refresh Failed", f"Could not reload dynamic UI modules.\n\n{error}")
+            self.status_var.set(f"Refresh failed: {error}")
+            if show_error_dialog:
+                messagebox.showerror("Refresh Failed", f"Could not reload dynamic UI modules.\n\n{error}")
+            if raise_errors:
+                raise
             if _event is not None:
                 return "break"
             return None

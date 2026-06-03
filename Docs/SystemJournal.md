@@ -77,6 +77,7 @@ Important files:
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
 - `agent_panel.py`: isolated reloadable Tk widget for the selected-agent attribute panel.
 - `agent_state.py`: isolated headless agent-state defaults and attribute-snapshot helpers.
+- `editor_command_bridge.py`: lightweight file-command bridge used to control the already-open editor without focusing it.
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
 - `layout_document.py`: isolated authored-layout load/save/normalize helpers shared by the native editor.
@@ -91,6 +92,7 @@ Important files:
 - `tools/launchers/ModelerLayoutEditorLauncher.cpp`: Windows launcher source for the native editor.
 - `tools/launchers/RunBlock0ASmoke.cpp`: Windows launcher source for the smoke test wrapper.
 - `tools/desktop/CreateCurrentSimulationShortcut.ps1`: recreates the desktop shortcut if needed.
+- `tools/control/SendEditorCommand.py`: writes hidden background commands such as `refresh` and `ping` for the open editor.
 - `RunBlock0ASmoke.exe`: Windows wrapper that launches the smoke test script.
 - `BuildAndTestCore.bat`: double-click build/test launcher.
 - `StartModeler.bat`: opens the native local editor launcher.
@@ -194,6 +196,7 @@ The editor currently supports:
 - Tent areas now read as grey, infirmaries as light/white, and training areas as orange in the saved layouts and editor defaults.
 - A visible UI build stamp plus refresh-needed title state when the editor code on disk is newer than the running window.
 - An in-app `Refresh App` action plus `Ctrl+R` to reload extracted dynamic modules in the current editor window.
+- A file-based command bridge so background tooling can ask the already-open editor to `refresh` or `ping` without opening another app window.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
 - Explicit save into `data/current_layout.json`.
@@ -216,6 +219,13 @@ The editor currently supports:
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 
 `Refresh App` now reloads `agent_state.py` and `agent_panel.py` in-process with `importlib.reload`, rebuilds the affected widget, and redraws the current window. Full edits to `ModelerLayoutEditor.pyw` still require one real editor restart because the main Tk shell owns bindings, menus, layout scaffolding, and process-level app identity. Future frequently edited UI should be extracted into reloadable modules so small changes can apply without closing the current editor.
+
+The background command workflow is:
+
+- Ensure the open editor has loaded the current `agent_panel.py` at least once.
+- Write `data/editor_command.json` with `tools/control/SendEditorCommand.py refresh --wait 5` from a hidden process.
+- The editor's root-level bridge polls the command file at a light cadence, handles the command, writes `data/editor_command_status.json`, and keeps the same process alive.
+- The command and status JSON files are runtime files and are ignored by git.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 

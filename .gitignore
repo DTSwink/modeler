@@ -24,6 +24,11 @@ Saved/
 *.obj
 __pycache__/
 
+# Local editor command bridge runtime files
+data/editor_command.json
+data/editor_command_status.json
+data/editor_command*.tmp
+
 # OS noise
 Thumbs.db
 .DS_Store
