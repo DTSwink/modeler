@@ -451,7 +451,8 @@ class LayoutEditorApp:
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
 
         self.agent_details_frame = ttk.LabelFrame(canvas_frame, text="Agent Attributes", padding=8)
-        self.agent_details_frame.place(x=12, rely=1.0, y=-12, anchor="sw", width=390, height=260)
+        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=300, height=145)
+        self.agent_details_frame.place_forget()
         self.agent_details_frame.columnconfigure(0, weight=1)
         self.agent_details_frame.rowconfigure(0, weight=1)
         self.agent_details_canvas = tk.Canvas(
@@ -1127,22 +1128,23 @@ class LayoutEditorApp:
         for child in self.agent_details_body.winfo_children():
             child.destroy()
 
-        agent = self.get_agent_by_id(self.last_agent_details_id)
-        if agent is None:
-            ttk.Label(
-                self.agent_details_body,
-                text="Click a Roman agent to show its live runtime attributes here.",
-                wraplength=900,
-                justify="left",
-            ).pack(anchor="w")
-            self.agent_details_canvas.yview_moveto(0.0)
-            self.on_agent_details_body_configure()
+        if self.selected_kind != "agent":
+            self.clear_agent_details()
+            self.agent_details_frame.place_forget()
             return
+
+        agent = self.get_agent_by_id(self.selected_id)
+        if agent is None:
+            self.clear_agent_details()
+            self.agent_details_frame.place_forget()
+            return
+        self.remember_last_clicked_agent(agent["id"])
+        self.agent_details_frame.place(x=0, rely=1.0, y=0, anchor="sw", width=300, height=145)
 
         ttk.Label(
             self.agent_details_body,
-            text="Live snapshot of the last clicked agent.",
-            wraplength=900,
+            text="Live snapshot of the selected agent.",
+            wraplength=260,
             justify="left",
         ).pack(anchor="w", pady=(0, 10))
 
@@ -1355,6 +1357,10 @@ class LayoutEditorApp:
     def clear_selection(self) -> None:
         self.selected_kind = "zone"
         self.selected_id = None
+        self.last_agent_details_id = None
+
+    def clear_agent_details(self) -> None:
+        self.last_agent_details_id = None
 
     def is_background_zone(self, zone: dict) -> bool:
         return zone["type"] in BACKGROUND_ZONE_TYPES
@@ -1395,6 +1401,8 @@ class LayoutEditorApp:
         self.selected_id = item_id
         if kind == "agent":
             self.remember_last_clicked_agent(item_id)
+        else:
+            self.clear_agent_details()
         self.render_all()
 
     def current_label_mode(self) -> str:
@@ -2003,12 +2011,15 @@ class LayoutEditorApp:
         elif hit["kind"].startswith("zone"):
             self.selected_kind = "zone"
             self.selected_id = hit["id"]
+            self.clear_agent_details()
         elif hit["kind"].startswith("point"):
             self.selected_kind = "point"
             self.selected_id = hit["id"]
+            self.clear_agent_details()
         else:
             self.selected_kind = "wall"
             self.selected_id = hit["id"]
+            self.clear_agent_details()
 
         item = self.get_selected_item()
         if item is None:
