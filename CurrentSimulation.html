@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Modeler Current Simulation</title>
+  <style>
+    :root {
+      --paper: #eee4d5;
+      --ink: #1d1c1a;
+      --muted: #5b584f;
+      --panel: rgba(255, 249, 240, 0.88);
+      --line: rgba(60, 52, 42, 0.14);
+      --accent: #b14e28;
+      --accent-2: #2f6d8d;
+      --forest: #4b7a34;
+      --camp: #8c7a5f;
+      --shadow: 0 18px 50px rgba(45, 26, 8, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(47, 109, 141, 0.2), transparent 26%),
+        radial-gradient(circle at bottom right, rgba(177, 78, 40, 0.16), transparent 28%),
+        linear-gradient(145deg, #f3ebdf 0%, #e7dcc9 100%);
+    }
+
+    .shell {
+      width: min(1320px, calc(100vw - 32px));
+      margin: 20px auto;
+      display: grid;
+      grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .sidebar {
+      padding: 24px 24px 20px;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 10px;
+      border: 1px solid rgba(177, 78, 40, 0.18);
+      border-radius: 999px;
+      background: rgba(177, 78, 40, 0.08);
+      color: var(--accent);
+      font-size: 0.8rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 3.6vw, 3.6rem);
+      line-height: 0.96;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 1rem;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      padding: 14px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.48);
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.5rem;
+      line-height: 1.05;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .section {
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+    }
+
+    .section h2 {
+      margin: 0;
+      font-size: 1.08rem;
+      font-weight: 600;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      flex: 0 0 auto;
+    }
+
+    .actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.58);
+      text-decoration: none;
+      font-size: 0.98rem;
+    }
+
+    .button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: transparent;
+    }
+
+    .viewer {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .viewer-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 8px 0;
+    }
+
+    .viewer-head h2 {
+      margin: 0;
+      font-size: 1.18rem;
+    }
+
+    .viewer-head span {
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: right;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.2));
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .footer-note {
+      padding: 0 8px 6px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="panel sidebar">
+      <div class="eyebrow">Current State</div>
+      <h1>Modeler Simulation Snapshot</h1>
+      <p>This page is the stable desktop entry point for the latest local simulation state. Right now the project is still at Block 0A, so this is an honest visual of the layout foundation rather than a full agent battle sim.</p>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="section">
+        <h2>What You Are Looking At</h2>
+        <p id="summary"></p>
+      </div>
+
+      <div class="section">
+        <h2>Legend</h2>
+        <div class="legend">
+          <div class="legend-item"><span class="swatch" style="background:#4c9fd6"></span> Ocean and lake zones</div>
+          <div class="legend-item"><span class="swatch" style="background:#5f9341"></span> Forest and corridor support zones</div>
+          <div class="legend-item"><span class="swatch" style="background:#bca278"></span> Camp footprints</div>
+          <div class="legend-item"><span class="swatch" style="background:#6c665b"></span> Wall segments</div>
+          <div class="legend-item"><span class="swatch" style="background:#2f6dff"></span> Roman semantic points</div>
+          <div class="legend-item"><span class="swatch" style="background:#c84836"></span> Ottoman semantic points</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Quick Actions</h2>
+        <div class="actions">
+          <a class="button primary" href="START_HERE.html">Open Project Launchpad</a>
+          <a class="button" href="RunBlock0ASmoke.exe">Run Block 0A Smoke Test</a>
+          <a class="button" href="Docs/SystemJournal.md">Open System Journal</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="panel viewer">
+      <div class="viewer-head">
+        <h2>Top-Down Layout Preview</h2>
+        <span id="meta"></span>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="simCanvas" width="1280" height="720"></canvas>
+      </div>
+      <div class="footer-note" id="footer"></div>
+    </main>
+  </div>
+
+  <script>
+    const snapshot = {
+      title: "Roman vs Ottoman - Block 0A",
+      block: "0A",
+      updated: "2026-06-03",
+      stage: "Engine-independent layout foundation",
+      summary: "The current system models layout markers and validation structure only. It does not yet run agents, possession, combat, or pathfinding. This page previews the intended first debug map using the pure data shape we are building toward.",
+      footer: "Stable desktop target: this page should keep opening the latest local simulation snapshot as the repo evolves.",
+      root: {
+        cellSize: 100,
+        gridSize: { x: 240, y: 80 }
+      },
+      zones: [
+        { type: "Ocean", label: "Ocean", center: { x: 1800, y: 4000 }, size: { x: 3600, y: 7600 }, color: "#4c9fd6" },
+        { type: "Camp", label: "Roman Camp", center: { x: 6600, y: 4000 }, size: { x: 3400, y: 2300 }, color: "#bca278" },
+        { type: "Walkable", label: "Grass Hallway", center: { x: 12000, y: 4000 }, size: { x: 6300, y: 1450 }, color: "#a8b96b" },
+        { type: "Camp", label: "Ottoman Camp", center: { x: 17550, y: 4000 }, size: { x: 3400, y: 2300 }, color: "#b18e6a" },
+        { type: "Lake", label: "Lake", center: { x: 22100, y: 4200 }, size: { x: 2600, y: 3200 }, color: "#5aa9de" },
+        { type: "Forest", label: "North Forest", center: { x: 12000, y: 1650 }, size: { x: 9800, y: 2100 }, color: "#5f9341" },
+        { type: "Forest", label: "South Forest", center: { x: 12000, y: 6350 }, size: { x: 9800, y: 2100 }, color: "#4f8039" }
+      ],
+      walls: [
+        { a: { x: 5100, y: 2850 }, b: { x: 8100, y: 2850 }, thickness: 120 },
+        { a: { x: 5100, y: 5150 }, b: { x: 8100, y: 5150 }, thickness: 120 },
+        { a: { x: 5100, y: 2850 }, b: { x: 5100, y: 5150 }, thickness: 120 },
+        { a: { x: 8100, y: 2850 }, b: { x: 8100, y: 3600 }, thickness: 120 },
+        { a: { x: 8100, y: 4400 }, b: { x: 8100, y: 5150 }, thickness: 120 },
+        { a: { x: 16050, y: 2850 }, b: { x: 19050, y: 2850 }, thickness: 120 },
+        { a: { x: 16050, y: 5150 }, b: { x: 19050, y: 5150 }, thickness: 120 },
+        { a: { x: 19050, y: 2850 }, b: { x: 19050, y: 5150 }, thickness: 120 },
+        { a: { x: 16050, y: 2850 }, b: { x: 16050, y: 3600 }, thickness: 120 },
+        { a: { x: 16050, y: 4400 }, b: { x: 16050, y: 5150 }, thickness: 120 }
+      ],
+      points: [
+        { label: "Roman Commander", type: "CommanderChair", faction: "Roman", position: { x: 6100, y: 4000 }, radius: 110, facing: 0.0 },
+        { label: "Roman Fire", type: "Fire", faction: "Roman", position: { x: 6900, y: 4100 }, radius: 90, facing: 0.0 },
+        { label: "Roman Basin", type: "Basin", faction: "Roman", position: { x: 7200, y: 3600 }, radius: 90, facing: 0.0 },
+        { label: "Roman Watchtower", type: "WatchTower", faction: "Roman", position: { x: 7900, y: 3050 }, radius: 90, facing: 0.0 },
+        { label: "Roman Spawn", type: "SpawnPoint", faction: "Roman", position: { x: 5750, y: 4700 }, radius: 80, facing: 0.0 },
+        { label: "Roman Gate", type: "Gate", faction: "Roman", position: { x: 8100, y: 4000 }, radius: 100, facing: 0.0 },
+        { label: "Ottoman Commander", type: "CommanderChair", faction: "Ottoman", position: { x: 18100, y: 4000 }, radius: 110, facing: 3.14 },
+        { label: "Ottoman Fire", type: "Fire", faction: "Ottoman", position: { x: 17350, y: 4100 }, radius: 90, facing: 0.0 },
+        { label: "Ottoman Basin", type: "Basin", faction: "Ottoman", position: { x: 17000, y: 3600 }, radius: 90, facing: 0.0 },
+        { label: "Ottoman Watchtower", type: "WatchTower", faction: "Ottoman", position: { x: 16150, y: 3050 }, radius: 90, facing: 3.14 },
+        { label: "Ottoman Spawn", type: "SpawnPoint", faction: "Ottoman", position: { x: 18500, y: 4700 }, radius: 80, facing: 0.0 },
+        { label: "Ottoman Gate", type: "Gate", faction: "Ottoman", position: { x: 16050, y: 4000 }, radius: 100, facing: 3.14 }
+      ]
+    };
+
+    const statsEl = document.getElementById("stats");
+    const summaryEl = document.getElementById("summary");
+    const metaEl = document.getElementById("meta");
+    const footerEl = document.getElementById("footer");
+    const canvas = document.getElementById("simCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const stats = [
+      { value: snapshot.zones.length, label: "Zones" },
+      { value: snapshot.points.length, label: "Points" },
+      { value: snapshot.walls.length, label: "Walls" }
+    ];
+
+    statsEl.innerHTML = stats.map((stat) => `
+      <div class="stat">
+        <strong>${stat.value}</strong>
+        <span>${stat.label}</span>
+      </div>
+    `).join("");
+
+    summaryEl.textContent = snapshot.summary;
+    metaEl.textContent = `Block ${snapshot.block} · ${snapshot.stage} · ${snapshot.updated}`;
+    footerEl.textContent = snapshot.footer;
+
+    function worldToCanvas(point, view) {
+      return {
+        x: view.padX + (point.x / view.worldWidth) * view.drawWidth,
+        y: view.padY + (point.y / view.worldHeight) * view.drawHeight
+      };
+    }
+
+    function drawRoundedRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function render(timeMs) {
+      const width = canvas.width;
+      const height = canvas.height;
+      const pulse = 0.55 + Math.sin(timeMs * 0.0024) * 0.12;
+      const view = {
+        padX: 34,
+        padY: 30,
+        drawWidth: width - 68,
+        drawHeight: height - 60,
+        worldWidth: snapshot.root.gridSize.x * snapshot.root.cellSize,
+        worldHeight: snapshot.root.gridSize.y * snapshot.root.cellSize
+      };
+
+      ctx.clearRect(0, 0, width, height);
+
+      const bg = ctx.createLinearGradient(0, 0, 0, height);
+      bg.addColorStop(0, "#ece5d6");
+      bg.addColorStop(1, "#dbcfbb");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.strokeStyle = "rgba(71, 61, 48, 0.08)";
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= snapshot.root.gridSize.x; x += 8) {
+        const gx = view.padX + (x / snapshot.root.gridSize.x) * view.drawWidth;
+        ctx.beginPath();
+        ctx.moveTo(gx, view.padY);
+        ctx.lineTo(gx, view.padY + view.drawHeight);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= snapshot.root.gridSize.y; y += 8) {
+        const gy = view.padY + (y / snapshot.root.gridSize.y) * view.drawHeight;
+        ctx.beginPath();
+        ctx.moveTo(view.padX, gy);
+        ctx.lineTo(view.padX + view.drawWidth, gy);
+        ctx.stroke();
+      }
+
+      for (const zone of snapshot.zones) {
+        const topLeft = worldToCanvas({
+          x: zone.center.x - zone.size.x / 2,
+          y: zone.center.y - zone.size.y / 2
+        }, view);
+        const bottomRight = worldToCanvas({
+          x: zone.center.x + zone.size.x / 2,
+          y: zone.center.y + zone.size.y / 2
+        }, view);
+        const zoneWidth = bottomRight.x - topLeft.x;
+        const zoneHeight = bottomRight.y - topLeft.y;
+
+        ctx.fillStyle = zone.color;
+        ctx.globalAlpha = zone.type === "Walkable" ? 0.48 : 0.76;
+        drawRoundedRect(topLeft.x, topLeft.y, zoneWidth, zoneHeight, 18);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        ctx.strokeStyle = "rgba(37, 34, 29, 0.24)";
+        ctx.lineWidth = 1.2;
+        drawRoundedRect(topLeft.x, topLeft.y, zoneWidth, zoneHeight, 18);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(26, 24, 22, 0.88)";
+        ctx.font = "600 18px Georgia";
+        ctx.textAlign = "center";
+        ctx.fillText(zone.label, topLeft.x + zoneWidth / 2, topLeft.y + zoneHeight / 2);
+      }
+
+      ctx.strokeStyle = "#6c665b";
+      ctx.lineCap = "round";
+      for (const wall of snapshot.walls) {
+        const a = worldToCanvas(wall.a, view);
+        const b = worldToCanvas(wall.b, view);
+        ctx.lineWidth = Math.max(4, wall.thickness / 28);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      for (const point of snapshot.points) {
+        const p = worldToCanvas(point.position, view);
+        const color = point.faction === "Roman" ? "#2f6dff" : "#c84836";
+        const ring = point.radius / 10;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ring + pulse * 1.8, 0, Math.PI * 2);
+        ctx.fillStyle = `${color}22`;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ring, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.92)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        const arrowLength = ring + 14;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(
+          p.x + Math.cos(point.facing) * arrowLength,
+          p.y + Math.sin(point.facing) * arrowLength
+        );
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(19, 18, 17, 0.9)";
+        ctx.font = "14px Georgia";
+        ctx.textAlign = "left";
+        ctx.fillText(point.label, p.x + 10, p.y - 10);
+      }
+
+      ctx.strokeStyle = "rgba(28, 24, 20, 0.22)";
+      ctx.lineWidth = 2;
+      drawRoundedRect(view.padX, view.padY, view.drawWidth, view.drawHeight, 22);
+      ctx.stroke();
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

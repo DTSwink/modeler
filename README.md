@@ -6,13 +6,17 @@ This repo should not contain an Unreal project during the core-building phase. T
 
 ## Start
 
-Open `START_HERE.html` for the rendered local launch page.
+Desktop shortcut: `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`
 
-Double-click `StartModeler.bat` to open that page from Windows.
+Open `CurrentSimulation.html` for the latest visual simulation snapshot.
+
+Double-click `StartModeler.bat` or `OpenCurrentSimulation.bat` to open that page from Windows.
 
 Open `RunBlock0ASmoke.exe` to launch the current pure C++ smoke test without typing commands.
 
+`START_HERE.html` remains the secondary launchpad for tools and notes.
 `BuildAndTestCore.bat` remains the underlying script if we need to inspect or change the build flow.
+`tools/desktop/CreateCurrentSimulationShortcut.ps1` recreates the desktop shortcut if needed.
 
 For the ongoing architecture record, read `Docs/SystemJournal.md`.
 
@@ -25,6 +29,7 @@ Block 0A has been corrected to be engine-independent:
 - Plain C++ layout draft container.
 - Block 0A validation-summary stub.
 - Smoke test for the pure core.
+- Visual snapshot page for the current layout foundation.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -32,6 +37,7 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 
 ## Test
 
-1. Open `RunBlock0ASmoke.exe`.
-2. Confirm the console reports marker counts.
-3. Confirm it prints `Block 0A pure core smoke test passed.`
+1. Open `CurrentSimulation.html` and confirm the top-down snapshot loads.
+2. Open `RunBlock0ASmoke.exe`.
+3. Confirm the console reports marker counts.
+4. Confirm it prints `Block 0A pure core smoke test passed.`

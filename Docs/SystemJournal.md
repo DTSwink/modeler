@@ -41,15 +41,21 @@ The player is never a special simulation entity. Later, player control should be
 
 Important files:
 
+- `CurrentSimulation.html`: primary visual snapshot for the latest local sim state.
 - `START_HERE.html`: rendered local launch page.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
 - `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
 - `src/modeler/sim/LayoutMarkers.cpp`: Block 0A marker summary/validation stub.
 - `tests/block0a_smoke.cpp`: current smoke test.
 - `tools/launchers/RunBlock0ASmoke.cpp`: Windows launcher source for the smoke test wrapper.
+- `tools/desktop/CreateCurrentSimulationShortcut.ps1`: recreates the desktop shortcut if needed.
 - `RunBlock0ASmoke.exe`: Windows wrapper that launches the smoke test script.
 - `BuildAndTestCore.bat`: double-click build/test launcher.
 - `StartModeler.bat`: opens the local start page.
+
+Local convenience artifact:
+
+- `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`: desktop shortcut that opens `CurrentSimulation.html`.
 
 Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` are ignored by git.
 
@@ -123,13 +129,36 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 `formatBlock0AValidation` returns a human-readable Block 0A message with those counts. Real layout validation belongs to Block 0B.
 
+## Current Visual Surface
+
+`CurrentSimulation.html` is the stable human-facing view for the project. It is meant to be the thing a desktop shortcut opens.
+
+The page currently shows:
+
+- A top-down visual preview of the intended first debug map.
+- A count of current Block 0A structural elements.
+- Honest status text explaining that the runtime agent sim is not built yet.
+
+This page should evolve with the project. The shortcut should stay stable even as the underlying systems become more capable.
+
+## Desktop Access
+
+The intended non-technical entry point is the desktop shortcut:
+
+- `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`
+
+That shortcut targets `CurrentSimulation.html` directly instead of copying a launcher executable to the desktop. This avoids the earlier failure mode where a moved executable could no longer find repo-relative files such as `BuildAndTestCore.bat`.
+
+If the shortcut ever disappears, recreate it with `tools/desktop/CreateCurrentSimulationShortcut.ps1`.
+
 ## Access Notes
 
 Codex desktop local file links preview text files in the app editor. That means direct links to `.bat`, `.cmd`, `.ps1`, `.md`, or source files open the file instead of executing it.
 
 Because of that:
 
-- The preferred clickable entry point is `START_HERE.html`.
+- The preferred clickable sim entry point is `CurrentSimulation.html`.
+- The preferred clickable tools page is `START_HERE.html`.
 - The preferred runnable launcher is `RunBlock0ASmoke.exe`.
 - `BuildAndTestCore.bat` remains the underlying script, but it is not the preferred chat-link target.
 
