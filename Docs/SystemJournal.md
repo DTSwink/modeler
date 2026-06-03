@@ -71,6 +71,7 @@ If a change makes the code easier to ship right now but harder to upgrade safely
 Important files:
 
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
+- `agent_state.py`: isolated headless agent-state defaults and attribute-snapshot helpers.
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
 - `layout_document.py`: isolated authored-layout load/save/normalize helpers shared by the native editor.
@@ -201,8 +202,10 @@ The editor currently supports:
 - Layout editing remains available while the simulation is running whenever `Freeze Layout` is off.
 - Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
 - Explicit saves now persist the current camera zoom and pan, so refreshes and reopen cycles can return to the same authored view.
+- A dedicated scrollable `Last Clicked Agent` pane that follows the most recently clicked Roman agent and shows a live runtime snapshot.
+- Roman agents now carry modular headless `needs` and `health` state, starting with `hunger`, `thirst`, and `status`.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
-- Shared geometry and authored-layout normalization now also live in isolated headless helper modules instead of being owned by the Tk app.
+- Shared geometry, authored-layout normalization, and agent-state snapshot/default helpers now also live in isolated headless helper modules instead of being owned by the Tk app.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
@@ -211,6 +214,8 @@ The important UI rule is that whole-scene readability wins over showing every la
 The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, spawns from the Roman camp, and can roam across the whole authored space while `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
 
 The important implementation rule is that even if the current native editor hosts several responsibilities in one app, each new system added to it should still be written as if it may be extracted, upgraded, or swapped later. Avoid tightly coupling saving, camera control, layout editing, agent stepping, rendering, and future gameplay rules into one indivisible block.
+
+The current agent-attributes pass follows that rule on purpose: hunger, thirst, and status live in headless agent state first, while the Tk app only renders a scrollable snapshot of that state. When needs logic gets smarter later, the runtime model should change in isolation and the UI should only need thin presentation updates.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
@@ -244,7 +249,7 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 8. Confirm mouse-wheel zoom and right-drag panning work.
 9. Change `Label Text Size` and confirm the label rendering updates.
 10. Confirm tent, infirmary, and training sub-areas exist inside each camp.
-11. Confirm training areas render grey while tent areas and infirmaries render orange.
+11. Confirm tent areas render grey, infirmaries render light/white, and training areas render orange.
 12. Confirm basin locations use blue centers, fire uses orange-red, watchtower uses purple, commander uses yellow, and gate locations stay transparent inside the white ring.
 13. Confirm the old grass hallway zone is absent.
 14. Click `Save Layout` or press `Ctrl+S`.
@@ -257,12 +262,14 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 21. Toggle `Freeze Layout` off and confirm layout editing resumes immediately, even while the simulation is still running.
 22. Press the spacebar after using toolbar buttons and confirm it toggles simulation instead of retriggering the previous button action.
 23. Save the layout, refresh or reopen the editor, and confirm the camera returns to the saved zoom and pan.
-24. Open `RunBlock0ASmoke.exe`.
-25. The script initializes the Visual Studio C++ toolchain.
-26. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-27. It runs the produced smoke test.
-28. The smoke test creates one zone, one location, and one wall.
-29. It asserts the summary counts and prints the Block 0A validation message.
+24. Click a Roman agent and confirm the `Last Clicked Agent` pane fills with a live scrollable snapshot.
+25. Confirm the pane shows hunger `100/100`, thirst `100/100`, and status `Alive` for fresh agents.
+26. Open `RunBlock0ASmoke.exe`.
+27. The script initializes the Visual Studio C++ toolchain.
+28. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+29. It runs the produced smoke test.
+30. The smoke test creates one zone, one location, and one wall.
+31. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 

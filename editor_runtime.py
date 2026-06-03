@@ -4,6 +4,7 @@ import math
 import random
 from copy import deepcopy
 
+from agent_state import build_default_agent_state, normalize_agent_state
 from sim_geometry import clamp, distance, local_to_world
 
 
@@ -27,6 +28,8 @@ class RomanSimulationRuntime:
 
     def attach_layout(self, layout: dict) -> None:
         self._layout = layout
+        for agent in self.agents:
+            normalize_agent_state(agent)
         self.clamp_all_agents_to_bounds()
 
     def world_dimensions(self) -> tuple[float, float]:
@@ -123,6 +126,7 @@ class RomanSimulationRuntime:
                     "moveSpeed": rng.uniform(145.0, 225.0),
                     "turnRate": rng.uniform(1.4, 2.5),
                     "decisionTimer": rng.uniform(0.35, 1.6),
+                    **build_default_agent_state(),
                 }
             )
         return agents

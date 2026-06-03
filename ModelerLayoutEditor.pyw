@@ -9,6 +9,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from agent_state import agent_snapshot_sections
 from editor_runtime import RomanSimulationRuntime
 from editor_view_state import read_saved_view, write_saved_view
 from layout_document import deep_copy, normalize_layout, read_json, write_json
@@ -230,6 +231,7 @@ class LayoutEditorApp:
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
         self.hover_kind = None
         self.hover_id = None
+        self.last_agent_details_id = None
         self.drag_state = None
         self.pan_state = None
         self.view = None
@@ -410,6 +412,29 @@ class LayoutEditorApp:
         self.inspector_body = ttk.Frame(inspector_frame)
         self.inspector_body.grid(row=0, column=0, sticky="ew")
 
+        agent_details_frame = ttk.LabelFrame(sidebar, text="Last Clicked Agent", padding=12)
+        agent_details_frame.pack(fill="both")
+        agent_details_frame.columnconfigure(0, weight=1)
+        agent_details_frame.rowconfigure(0, weight=1)
+        self.agent_details_canvas = tk.Canvas(
+            agent_details_frame,
+            height=290,
+            highlightthickness=0,
+            borderwidth=0,
+            background=self.root.cget("background"),
+        )
+        self.agent_details_canvas.grid(row=0, column=0, sticky="nsew")
+        agent_details_scrollbar = ttk.Scrollbar(agent_details_frame, orient="vertical", command=self.agent_details_canvas.yview)
+        agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.agent_details_canvas.configure(yscrollcommand=agent_details_scrollbar.set)
+        self.agent_details_body = ttk.Frame(self.agent_details_canvas)
+        self.agent_details_window = self.agent_details_canvas.create_window((0, 0), window=self.agent_details_body, anchor="nw")
+        self.agent_details_body.bind("<Configure>", self.on_agent_details_body_configure)
+        self.agent_details_canvas.bind("<Configure>", self.on_agent_details_canvas_configure)
+        self.agent_details_canvas.bind("<MouseWheel>", self.on_agent_details_mousewheel)
+        self.agent_details_canvas.bind("<Button-4>", self.on_agent_details_mousewheel)
+        self.agent_details_canvas.bind("<Button-5>", self.on_agent_details_mousewheel)
+
         top_bar = ttk.Frame(viewer)
         top_bar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         top_bar.columnconfigure(0, weight=1)
@@ -483,6 +508,28 @@ class LayoutEditorApp:
         button.bind("<KeyPress-space>", lambda _event: "break")
         return button
 
+    def on_agent_details_body_configure(self, _event=None) -> None:
+        self.agent_details_canvas.configure(scrollregion=self.agent_details_canvas.bbox("all"))
+
+    def on_agent_details_canvas_configure(self, event: tk.Event) -> None:
+        self.agent_details_canvas.itemconfigure(self.agent_details_window, width=max(1, event.width))
+
+    def on_agent_details_mousewheel(self, event: tk.Event) -> str:
+        if getattr(event, "delta", 0):
+            self.agent_details_canvas.yview_scroll(int(-event.delta / 120), "units")
+        elif getattr(event, "num", None) == 4:
+            self.agent_details_canvas.yview_scroll(-1, "units")
+        elif getattr(event, "num", None) == 5:
+            self.agent_details_canvas.yview_scroll(1, "units")
+        return "break"
+
+    def bind_agent_details_scroll(self, widget) -> None:
+        widget.bind("<MouseWheel>", self.on_agent_details_mousewheel, add="+")
+        widget.bind("<Button-4>", self.on_agent_details_mousewheel, add="+")
+        widget.bind("<Button-5>", self.on_agent_details_mousewheel, add="+")
+        for child in widget.winfo_children():
+            self.bind_agent_details_scroll(child)
+
     def _sync_world_controls(self) -> None:
         root = self.layout["root"]
         editor = self.layout["editor"]
@@ -549,6 +596,20 @@ class LayoutEditorApp:
         self.selected_kind = "zone"
         self.selected_id = None
 
+    def ensure_valid_last_clicked_agent(self) -> None:
+        if self.last_agent_details_id is None:
+            return
+        if self.get_agent_by_id(self.last_agent_details_id) is not None:
+            return
+        self.last_agent_details_id = None
+
+    def remember_last_clicked_agent(self, agent_id: str | None) -> None:
+        if agent_id is None:
+            return
+        if self.get_agent_by_id(agent_id) is None:
+            return
+        self.last_agent_details_id = agent_id
+
     def apply_snapshot(self, snapshot: dict) -> None:
         self.layout = self._normalize_layout(snapshot["layout"])
         self.selected_kind = snapshot.get("selected_kind", "zone")
@@ -557,6 +618,7 @@ class LayoutEditorApp:
         self.hover_id = None
         self.simulation.attach_layout(self.layout)
         self.ensure_valid_selection()
+        self.ensure_valid_last_clicked_agent()
         self.dirty = self.layout != self.saved_layout
         self._sync_world_controls()
 
@@ -633,6 +695,7 @@ class LayoutEditorApp:
         if changed:
             self.render_canvas()
             self.render_stats_and_labels()
+            self.render_agent_details_panel()
         self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
 
     def advance_simulation(self, sim_dt: float) -> bool:
@@ -985,6 +1048,7 @@ class LayoutEditorApp:
     def render_all(self) -> None:
         self.render_tree()
         self.render_inspector()
+        self.render_agent_details_panel()
         self.render_canvas()
         self.render_stats_and_labels()
 
@@ -1004,7 +1068,8 @@ class LayoutEditorApp:
             )
         elif self.selected_kind == "agent":
             self.selection_var.set(
-                f"{selected['label']} selected. Drag the agent freely across the map while the simulation runs or pauses. Current speed: {int(round(selected['moveSpeed']))}."
+                f"{selected['label']} selected. Drag the agent freely across the map while the simulation runs or pauses. "
+                f"Current speed: {int(round(selected['moveSpeed']))}. Live hunger, thirst, and status are pinned in the Last Clicked Agent panel."
             )
         else:
             self.selection_var.set(
@@ -1058,6 +1123,55 @@ class LayoutEditorApp:
             self.render_agent_inspector(selected)
         else:
             self.render_wall_inspector(selected)
+
+    def render_agent_details_panel(self) -> None:
+        for child in self.agent_details_body.winfo_children():
+            child.destroy()
+
+        agent = self.get_agent_by_id(self.last_agent_details_id)
+        if agent is None:
+            ttk.Label(
+                self.agent_details_body,
+                text="Click a Roman agent on the map or in the list to pin its live runtime attributes here.",
+                wraplength=320,
+                justify="left",
+            ).pack(anchor="w")
+            self.agent_details_canvas.yview_moveto(0.0)
+            self.on_agent_details_body_configure()
+            return
+
+        ttk.Label(
+            self.agent_details_body,
+            text=(
+                "Live runtime snapshot. This pane follows the last clicked agent, updates while the simulation runs, "
+                "and is intentionally separate from saved layout authoring."
+            ),
+            wraplength=320,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 10))
+
+        for section in agent_snapshot_sections(agent):
+            section_frame = ttk.LabelFrame(self.agent_details_body, text=section["title"], padding=10)
+            section_frame.pack(fill="x", pady=(0, 10))
+            section_frame.columnconfigure(1, weight=1)
+            for row_index, row in enumerate(section["rows"]):
+                self.render_agent_detail_row(section_frame, row_index, row)
+
+        self.bind_agent_details_scroll(self.agent_details_body)
+        self.on_agent_details_body_configure()
+
+    def render_agent_detail_row(self, parent: ttk.Frame, row_index: int, row: dict) -> None:
+        ttk.Label(parent, text=row["label"]).grid(row=row_index, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
+        if row.get("kind") == "meter":
+            meter_frame = ttk.Frame(parent)
+            meter_frame.grid(row=row_index, column=1, sticky="ew", pady=(0, 8))
+            meter_frame.columnconfigure(0, weight=1)
+            maximum = max(1, int(row.get("maximum", 100)))
+            value = max(0, min(maximum, int(row["value"])))
+            ttk.Progressbar(meter_frame, mode="determinate", maximum=maximum, value=value).grid(row=0, column=0, sticky="ew")
+            ttk.Label(meter_frame, text=f"{value}/{maximum}").grid(row=0, column=1, sticky="e", padx=(10, 0))
+            return
+        ttk.Label(parent, text=str(row["value"])).grid(row=row_index, column=1, sticky="w", pady=(0, 8))
 
     def render_zone_inspector(self, zone: dict) -> None:
         vars_map = {
@@ -1131,7 +1245,7 @@ class LayoutEditorApp:
         }
         ttk.Label(
             self.inspector_body,
-            text="Runtime-only Roman agent. These edits do not change the saved map layout.",
+            text="Runtime-only Roman agent. These edits do not change the saved map layout. Full live attributes are shown in Last Clicked Agent below.",
             wraplength=320,
             justify="left",
         ).pack(anchor="w", pady=(0, 8))
@@ -1283,6 +1397,8 @@ class LayoutEditorApp:
             return
         self.selected_kind = kind
         self.selected_id = item_id
+        if kind == "agent":
+            self.remember_last_clicked_agent(item_id)
         self.render_all()
 
     def current_label_mode(self) -> str:
@@ -1887,6 +2003,7 @@ class LayoutEditorApp:
         if hit["kind"] == "agent":
             self.selected_kind = "agent"
             self.selected_id = hit["id"]
+            self.remember_last_clicked_agent(hit["id"])
         elif hit["kind"].startswith("zone"):
             self.selected_kind = "zone"
             self.selected_id = hit["id"]
@@ -2011,6 +2128,8 @@ class LayoutEditorApp:
         self.status_var.set("Repositioning Roman agent." if drag_type == "move-agent" else "Editing layout. Changes are not saved yet.")
         self.render_canvas()
         self.render_stats_and_labels()
+        if drag_type == "move-agent":
+            self.render_agent_details_panel()
 
     def on_canvas_release(self, _event: tk.Event) -> None:
         if self.drag_state is None:

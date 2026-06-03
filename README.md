@@ -8,6 +8,8 @@ The same native editor is now also the first runtime sandbox. Roman-side prototy
 
 The runtime stepping logic and saved camera-state logic are now split into dedicated helper modules so those behaviors can evolve without forcing unrelated editor UI changes.
 
+Headless agent-state defaults and agent-attribute snapshot helpers now also live in a dedicated module, so needs and health can grow without baking UI assumptions into the runtime stepper.
+
 The future game core is intended to stay headless. Rendering and editor presentation are host layers around the simulation, not part of the simulation itself.
 
 For UI cleanup and readability review, prefer user-provided screenshots plus background or headless checks before foreground launches when possible. That lets us tune the editor without taking over the active screen.
@@ -50,6 +52,7 @@ Block 0A has been corrected to be engine-independent:
 - Optional `Freeze Layout` toggle so the map can stay readable during simulation without accidental handle grabs or layout drags.
 - Spacebar toggles the simulation without re-triggering the last clicked button.
 - `Save Layout` also persists the current zoom/pan view so refreshes reopen from the same camera framing.
+- Scrollable `Last Clicked Agent` pane with live runtime attributes, including hunger, thirst, and status.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -76,6 +79,8 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 17. Save the layout, refresh or reopen the editor, and confirm the camera zoom/pan reopens where it was saved.
 18. Click `Save Layout` or press `Ctrl+S` to explicitly write the current draft to `data/current_layout.json`.
 19. Close and reopen the editor without saving a fresh edit, and confirm it returns to the last explicit save rather than unsaved session changes.
-20. Open `RunBlock0ASmoke.exe`.
-21. Confirm the console reports marker counts.
-22. Confirm it prints `Block 0A pure core smoke test passed.`
+20. Click a Roman agent and confirm the `Last Clicked Agent` pane fills with a live scrollable snapshot.
+21. Confirm the pane shows hunger `100/100`, thirst `100/100`, and status `Alive` for fresh agents.
+22. Open `RunBlock0ASmoke.exe`.
+23. Confirm the console reports marker counts.
+24. Confirm it prints `Block 0A pure core smoke test passed.`
