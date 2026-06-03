@@ -449,27 +449,19 @@ class LayoutEditorApp:
         self.canvas.bind("<Motion>", self.on_canvas_motion)
         self.canvas.bind("<Leave>", self.on_canvas_leave)
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
-        self.root.bind("<Control-s>", self.save_layout_now)
-        self.root.bind("<Control-r>", self.refresh_app)
-        self.root.bind("<Control-z>", self.undo_last_change)
-        self.root.bind("<Control-0>", self.reset_view)
 
-        footer_frame = ttk.Frame(viewer)
-        footer_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
-        footer_frame.columnconfigure(0, weight=1)
-
-        agent_details_frame = ttk.LabelFrame(footer_frame, text="Agent Attributes", padding=8)
-        agent_details_frame.grid(row=0, column=0, sticky="ew")
-        agent_details_frame.columnconfigure(0, weight=1)
+        self.agent_details_frame = ttk.LabelFrame(canvas_frame, text="Agent Attributes", padding=8)
+        self.agent_details_frame.place(x=12, rely=1.0, y=-12, anchor="sw", width=390, height=260)
+        self.agent_details_frame.columnconfigure(0, weight=1)
+        self.agent_details_frame.rowconfigure(0, weight=1)
         self.agent_details_canvas = tk.Canvas(
-            agent_details_frame,
-            height=135,
+            self.agent_details_frame,
             highlightthickness=0,
             borderwidth=0,
             background=self.root.cget("background"),
         )
-        self.agent_details_canvas.grid(row=0, column=0, sticky="ew")
-        agent_details_scrollbar = ttk.Scrollbar(agent_details_frame, orient="vertical", command=self.agent_details_canvas.yview)
+        self.agent_details_canvas.grid(row=0, column=0, sticky="nsew")
+        agent_details_scrollbar = ttk.Scrollbar(self.agent_details_frame, orient="vertical", command=self.agent_details_canvas.yview)
         agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
         self.agent_details_canvas.configure(yscrollcommand=agent_details_scrollbar.set)
         self.agent_details_body = ttk.Frame(self.agent_details_canvas)
@@ -479,12 +471,20 @@ class LayoutEditorApp:
         self.agent_details_canvas.bind("<MouseWheel>", self.on_agent_details_mousewheel)
         self.agent_details_canvas.bind("<Button-4>", self.on_agent_details_mousewheel)
         self.agent_details_canvas.bind("<Button-5>", self.on_agent_details_mousewheel)
+        self.root.bind("<Control-s>", self.save_layout_now)
+        self.root.bind("<Control-r>", self.refresh_app)
+        self.root.bind("<Control-z>", self.undo_last_change)
+        self.root.bind("<Control-0>", self.reset_view)
+
+        footer_frame = ttk.Frame(viewer)
+        footer_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        footer_frame.columnconfigure(0, weight=1)
 
         self.selection_label = ttk.Label(footer_frame, textvariable=self.selection_var, wraplength=960, justify="left")
-        self.selection_label.grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.selection_label.grid(row=0, column=0, sticky="w")
 
         self.footer_label = ttk.Label(footer_frame, text="", wraplength=960, justify="left")
-        self.footer_label.grid(row=2, column=0, sticky="w", pady=(4, 0))
+        self.footer_label.grid(row=1, column=0, sticky="w", pady=(4, 0))
 
     def _make_entry(self, parent: ttk.Frame, label: str, variable: tk.StringVar, row: int, column: int, callback) -> None:
         field = ttk.Frame(parent)
@@ -1068,7 +1068,7 @@ class LayoutEditorApp:
         elif self.selected_kind == "agent":
             self.selection_var.set(
                 f"{selected['label']} selected. Drag the agent freely across the map while the simulation runs or pauses. "
-                f"Speed: {int(round(selected['moveSpeed']))}. Live hunger, thirst, and status are in the bottom Agent Attributes panel."
+                f"Speed: {int(round(selected['moveSpeed']))}. Live hunger, thirst, and status are in the lower-left Agent Attributes panel."
             )
         else:
             self.selection_var.set(

@@ -52,7 +52,7 @@ Block 0A has been corrected to be engine-independent:
 - Optional `Freeze Layout` toggle so the map can stay readable during simulation without accidental handle grabs or layout drags.
 - Spacebar toggles the simulation without re-triggering the last clicked button.
 - `Save Layout` also persists the current zoom/pan view so refreshes reopen from the same camera framing.
-- Bottom `Agent Attributes` scroll panel with live runtime attributes, including hunger, thirst, and status.
+- Lower-left viewer `Agent Attributes` scroll panel with live runtime attributes, including hunger, thirst, and status.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -79,7 +79,7 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 17. Save the layout, refresh or reopen the editor, and confirm the camera zoom/pan reopens where it was saved.
 18. Click `Save Layout` or press `Ctrl+S` to explicitly write the current draft to `data/current_layout.json`.
 19. Close and reopen the editor without saving a fresh edit, and confirm it returns to the last explicit save rather than unsaved session changes.
-20. Click a Roman agent and confirm the bottom `Agent Attributes` panel fills with a live scrollable snapshot.
+20. Click a Roman agent and confirm the lower-left viewer `Agent Attributes` panel fills with a live scrollable snapshot.
 21. Confirm the pane shows hunger `100/100`, thirst `100/100`, and status `Alive` for fresh agents.
 22. Open `RunBlock0ASmoke.exe`.
 23. Confirm the console reports marker counts.
