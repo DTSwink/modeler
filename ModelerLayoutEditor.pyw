@@ -120,6 +120,7 @@ class LayoutEditorApp:
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
         self.drag_state = None
         self.view = None
+        self.suppress_tree_event = False
         self.status_var = tk.StringVar(value="Ready. Draft autosaves to data/current_layout.json.")
         self.meta_var = tk.StringVar()
         self.selection_var = tk.StringVar()
@@ -216,12 +217,12 @@ class LayoutEditorApp:
 
         button_row = ttk.Frame(sidebar)
         button_row.pack(fill="x", pady=(0, 12))
-        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Import JSON", command=self.import_json).grid(row=0, column=1, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Export JSON", command=self.export_json).grid(row=0, column=2, sticky="ew")
+        ttk.Button(button_row, text="Save Layout", command=self.save_layout_now).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(button_row, text="Import JSON", command=self.import_json).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0))
+        ttk.Button(button_row, text="Export JSON", command=self.export_json).grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0))
+        ttk.Button(button_row, text="Open Data Folder", command=self.open_data_folder).grid(row=0, column=2, rowspan=2, sticky="nsew", pady=(0, 0))
         button_row.columnconfigure((0, 1, 2), weight=1)
-
-        ttk.Button(sidebar, text="Open Data Folder", command=self.open_data_folder).pack(fill="x")
 
         ttk.Label(sidebar, textvariable=self.status_var, wraplength=340, justify="left").pack(anchor="w", pady=(10, 14))
 
@@ -294,6 +295,7 @@ class LayoutEditorApp:
         self.canvas.bind("<Motion>", self.on_canvas_motion)
         self.canvas.bind("<Leave>", lambda _event: self.canvas.configure(cursor=""))
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
+        self.root.bind("<Control-s>", self.save_layout_now)
 
         footer_frame = ttk.Frame(viewer)
         footer_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -392,6 +394,10 @@ class LayoutEditorApp:
         self.status_var.set(message)
         self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']}")
 
+    def save_layout_now(self, _event=None) -> None:
+        self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
+        self.render_stats_and_labels()
+
     def render_all(self) -> None:
         self.render_tree()
         self.render_inspector()
@@ -420,23 +426,27 @@ class LayoutEditorApp:
 
     def render_tree(self) -> None:
         selection_iid = f"{self.selected_kind}:{self.selected_id}" if self.selected_id else None
-        self.tree.delete(*self.tree.get_children())
+        self.suppress_tree_event = True
+        try:
+            self.tree.delete(*self.tree.get_children())
 
-        zones_parent = self.tree.insert("", "end", iid="group-zone", text="Zones", open=True)
-        for zone in self.layout["zones"]:
-            self.tree.insert(zones_parent, "end", iid=f"zone:{zone['id']}", text=zone["label"])
+            zones_parent = self.tree.insert("", "end", iid="group-zone", text="Zones", open=True)
+            for zone in self.layout["zones"]:
+                self.tree.insert(zones_parent, "end", iid=f"zone:{zone['id']}", text=zone["label"])
 
-        points_parent = self.tree.insert("", "end", iid="group-point", text="Points", open=True)
-        for point in self.layout["points"]:
-            self.tree.insert(points_parent, "end", iid=f"point:{point['id']}", text=point["label"])
+            points_parent = self.tree.insert("", "end", iid="group-point", text="Points", open=True)
+            for point in self.layout["points"]:
+                self.tree.insert(points_parent, "end", iid=f"point:{point['id']}", text=point["label"])
 
-        walls_parent = self.tree.insert("", "end", iid="group-wall", text="Walls", open=True)
-        for wall in self.layout["walls"]:
-            self.tree.insert(walls_parent, "end", iid=f"wall:{wall['id']}", text=wall["id"])
+            walls_parent = self.tree.insert("", "end", iid="group-wall", text="Walls", open=True)
+            for wall in self.layout["walls"]:
+                self.tree.insert(walls_parent, "end", iid=f"wall:{wall['id']}", text=wall["id"])
 
-        if selection_iid and self.tree.exists(selection_iid):
-            self.tree.selection_set(selection_iid)
-            self.tree.focus(selection_iid)
+            if selection_iid and self.tree.exists(selection_iid):
+                self.tree.selection_set(selection_iid)
+                self.tree.focus(selection_iid)
+        finally:
+            self.suppress_tree_event = False
 
     def render_inspector(self) -> None:
         for child in self.inspector_body.winfo_children():
@@ -588,6 +598,8 @@ class LayoutEditorApp:
         return None
 
     def on_tree_select(self, _event=None) -> None:
+        if self.suppress_tree_event:
+            return
         selection = self.tree.selection()
         if not selection:
             return
@@ -595,6 +607,8 @@ class LayoutEditorApp:
         if iid.startswith("group-"):
             return
         kind, item_id = iid.split(":", 1)
+        if kind == self.selected_kind and item_id == self.selected_id:
+            return
         self.selected_kind = kind
         self.selected_id = item_id
         self.render_all()
@@ -931,10 +945,27 @@ class LayoutEditorApp:
 
 
 def main() -> None:
-    root = tk.Tk()
-    ttk.Style().theme_use("vista" if "vista" in ttk.Style().theme_names() else ttk.Style().theme_use())
-    LayoutEditorApp(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+        style = ttk.Style()
+        if "vista" in style.theme_names():
+            style.theme_use("vista")
+        LayoutEditorApp(root)
+        root.update_idletasks()
+        root.deiconify()
+        root.lift()
+        root.attributes("-topmost", True)
+        root.after(250, lambda: root.attributes("-topmost", False))
+        root.focus_force()
+        root.mainloop()
+    except Exception as error:
+        try:
+            fallback = tk.Tk()
+            fallback.withdraw()
+            messagebox.showerror("Modeler Layout Editor", f"Editor failed to launch.\n\n{error}")
+            fallback.destroy()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

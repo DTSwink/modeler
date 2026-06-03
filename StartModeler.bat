@@ -1,17 +1,10 @@
 @echo off
-set "SCRIPT=%~dp0ModelerLayoutEditor.pyw"
-set "PYTHONW=C:\Users\singerie\Documents\Cursor\stepper\.tools\python310\pythonw.exe"
+set "LAUNCHER=%~dp0ModelerLayoutEditorLauncher.exe"
 
-if not exist "%SCRIPT%" (
-	echo Could not find "%SCRIPT%".
+if not exist "%LAUNCHER%" (
+	echo Could not find "%LAUNCHER%".
 	pause
 	exit /b 1
 )
 
-if not exist "%PYTHONW%" (
-	echo Could not find "%PYTHONW%".
-	pause
-	exit /b 1
-)
-
-start "" "%PYTHONW%" "%SCRIPT%"
+start "" "%LAUNCHER%"

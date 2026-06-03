@@ -39,7 +39,8 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 
 1. Open `ModelerLayoutEditor.pyw` and confirm the native editor window opens.
 2. Drag a zone, point, and wall endpoint to confirm direct manipulation works.
-3. Confirm edits autosave into `data/current_layout.json`.
-4. Open `RunBlock0ASmoke.exe`.
-5. Confirm the console reports marker counts.
-6. Confirm it prints `Block 0A pure core smoke test passed.`
+3. Click `Save Layout` or press `Ctrl+S` to explicitly write the current draft to `data/current_layout.json`.
+4. Confirm ordinary edits also autosave into `data/current_layout.json`.
+5. Open `RunBlock0ASmoke.exe`.
+6. Confirm the console reports marker counts.
+7. Confirm it prints `Block 0A pure core smoke test passed.`

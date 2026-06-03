@@ -42,17 +42,19 @@ The player is never a special simulation entity. Later, player control should be
 Important files:
 
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
+- `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
 - `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
 - `src/modeler/sim/LayoutMarkers.cpp`: Block 0A marker summary/validation stub.
 - `tests/block0a_smoke.cpp`: current smoke test.
 - `data/default_layout.json`: reset source for the editor.
 - `data/current_layout.json`: autosaved working draft for the editor.
+- `tools/launchers/ModelerLayoutEditorLauncher.cpp`: Windows launcher source for the native editor.
 - `tools/launchers/RunBlock0ASmoke.cpp`: Windows launcher source for the smoke test wrapper.
 - `tools/desktop/CreateCurrentSimulationShortcut.ps1`: recreates the desktop shortcut if needed.
 - `RunBlock0ASmoke.exe`: Windows wrapper that launches the smoke test script.
 - `BuildAndTestCore.bat`: double-click build/test launcher.
-- `StartModeler.bat`: opens the local start page.
+- `StartModeler.bat`: opens the native local editor launcher.
 
 Local convenience artifact:
 
@@ -141,6 +143,7 @@ The editor currently supports:
 - Point radius and facing handles.
 - Wall endpoint handles.
 - Exact numeric edits through the inspector.
+- Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Autosave into `data/current_layout.json`.
 
 ## Desktop Access
@@ -161,13 +164,14 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 
 1. Open `ModelerLayoutEditor.pyw`.
 2. Drag a zone, a point, and a wall endpoint.
-3. Confirm those edits appear in `data/current_layout.json`.
-4. Open `RunBlock0ASmoke.exe`.
-5. The script initializes the Visual Studio C++ toolchain.
-6. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-7. It runs the produced smoke test.
-8. The smoke test creates one zone, one point, and one wall.
-9. It asserts the summary counts and prints the Block 0A validation message.
+3. Click `Save Layout` or press `Ctrl+S`.
+4. Confirm those edits appear in `data/current_layout.json`.
+5. Open `RunBlock0ASmoke.exe`.
+6. The script initializes the Visual Studio C++ toolchain.
+7. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+8. It runs the produced smoke test.
+9. The smoke test creates one zone, one point, and one wall.
+10. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
