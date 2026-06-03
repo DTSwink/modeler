@@ -66,6 +66,13 @@ SIMULATION_SPEED_OPTIONS = [
 ]
 ROMAN_SIMULATION_ZONE_ID = "zone-roman-camp"
 ROMAN_AGENT_COUNT = 5
+SPACEBAR_TEXT_INPUT_CLASSES = {
+    "Entry",
+    "TEntry",
+    "Text",
+    "TCombobox",
+    "Spinbox",
+}
 ZONE_TYPE_COLORS = {
     "TentArea": "#b7b2ab",
     "Infirmary": "#ede7df",
@@ -305,14 +312,17 @@ class LayoutEditorApp:
         self.simulation_speed = 1.0
         self.simulation_time_seconds = 0.0
         self.last_simulation_tick = time.perf_counter()
+        self.spacebar_toggle_pending = False
         self.sim_rng = random.Random(1337)
         self.agents = self.build_initial_agents()
+        self.restore_saved_view_state()
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._sync_world_controls()
         self.render_all()
         self.root.bind_all("<KeyPress-space>", self.on_spacebar_press, add="+")
+        self.root.bind_all("<KeyRelease-space>", self.on_spacebar_release, add="+")
         self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
         self.root.after(2500, self.poll_for_editor_code_update)
 
@@ -351,6 +361,18 @@ class LayoutEditorApp:
         layout.setdefault("stage", "Engine-independent layout editor")
         layout.setdefault("block", "0A")
         layout.setdefault("updated", today_stamp())
+        default_center = {
+            "x": float(layout["root"]["gridSize"]["x"] * layout["root"]["cellSize"]) * 0.5,
+            "y": float(layout["root"]["gridSize"]["y"] * layout["root"]["cellSize"]) * 0.5,
+        }
+        saved_view = layout["editor"].setdefault("savedView", {})
+        saved_view["zoom"] = clamp(float(saved_view.get("zoom", 1.0)), 0.35, 8.0)
+        saved_center = saved_view.setdefault("center", default_center)
+        if not isinstance(saved_center, dict):
+            saved_center = default_center
+            saved_view["center"] = saved_center
+        saved_center["x"] = float(saved_center.get("x", default_center["x"]))
+        saved_center["y"] = float(saved_center.get("y", default_center["y"]))
 
         for index, zone in enumerate(layout["zones"]):
             zone.setdefault("id", f"zone-{index + 1}")
@@ -644,6 +666,28 @@ class LayoutEditorApp:
         self.snap_enabled_var.set(bool(editor["snapToGrid"]))
         self.zoom_percent_var.set(f"{int(round(self.view_zoom * 100))}%")
         self.update_simulation_summary()
+
+    def restore_saved_view_state(self) -> None:
+        saved_view = self.layout.get("editor", {}).get("savedView", {})
+        default_center = self.default_view_center()
+        saved_center = saved_view.get("center", default_center)
+        if not isinstance(saved_center, dict):
+            saved_center = default_center
+        self.view_zoom = clamp(float(saved_view.get("zoom", 1.0)), 0.35, 8.0)
+        self.view_center = {
+            "x": float(saved_center.get("x", default_center["x"])),
+            "y": float(saved_center.get("y", default_center["y"])),
+        }
+
+    def persist_saved_view_state(self) -> None:
+        self.layout.setdefault("editor", {})
+        self.layout["editor"]["savedView"] = {
+            "zoom": round(float(self.view_zoom), 4),
+            "center": {
+                "x": round(float(self.view_center["x"]), 2),
+                "y": round(float(self.view_center["y"]), 2),
+            },
+        }
 
     def world_dimensions(self) -> tuple[float, float]:
         return (
@@ -959,8 +1003,16 @@ class LayoutEditorApp:
     def on_spacebar_press(self, event: tk.Event) -> str | None:
         widget = self.root.focus_get() or event.widget
         widget_class = widget.winfo_class() if widget is not None else ""
-        if widget_class in {"Entry", "TEntry", "Text"}:
+        self.spacebar_toggle_pending = widget_class not in SPACEBAR_TEXT_INPUT_CLASSES
+        if not self.spacebar_toggle_pending:
             return None
+        return "break"
+
+    def on_spacebar_release(self, _event: tk.Event) -> str | None:
+        if not self.spacebar_toggle_pending:
+            return None
+        self.spacebar_toggle_pending = False
+        self.toggle_simulation()
         return "break"
 
     def mark_dirty(self, message: str) -> None:
@@ -1111,7 +1163,7 @@ class LayoutEditorApp:
             self.layout = self._normalize_layout(read_json(Path(path)))
             self.selected_kind = "zone"
             self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
-            self.reset_view_state()
+            self.restore_saved_view_state()
             self._sync_world_controls()
             self.commit_layout_change(before_state, f"Imported layout from {path}. Changes are not saved yet.")
         except Exception as error:
@@ -1124,12 +1176,13 @@ class LayoutEditorApp:
         self.layout = self._normalize_layout(deep_copy(self.default_layout))
         self.selected_kind = "zone"
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
-        self.reset_view_state()
+        self.restore_saved_view_state()
         self._sync_world_controls()
         self.commit_layout_change(before_state, "Reset layout to default. Changes are not saved yet.")
 
     def touch_and_save(self, message: str) -> None:
         self.layout["updated"] = today_stamp()
+        self.persist_saved_view_state()
         for zone in self.layout["zones"]:
             zone["color"] = semantic_zone_color(zone["type"], zone["color"])
         self.layout["locations"] = self.layout["points"]
@@ -1154,6 +1207,9 @@ class LayoutEditorApp:
             if _event is not None:
                 return "break"
             return None
+        if not self.dirty:
+            self.persist_saved_view_state()
+            write_json(CURRENT_LAYOUT_PATH, self.layout)
         try:
             subprocess.Popen([sys.executable, str(SCRIPT_PATH)], cwd=str(ROOT))
         except Exception as error:

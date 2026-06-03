@@ -172,7 +172,8 @@ The editor currently supports:
 - Roman camp hard borders for the current prototype, with pathfinding intentionally deferred.
 - `Freeze Layout` toggle so hover inspection can stay active while map handles, map selection drags, and layout edits are suppressed.
 - Layout editing remains available while the simulation is running whenever `Freeze Layout` is off.
-- Button focus hardened so pressing the spacebar does not retrigger the last clicked button during map work.
+- Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
+- Explicit saves now persist the current camera zoom and pan, so refreshes and reopen cycles can return to the same authored view.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
@@ -223,13 +224,14 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 19. Drag an agent and confirm it remains inside the Roman camp bounds.
 20. Toggle `Freeze Layout` on and confirm layout handles do not appear and map drags are blocked while hover inspection still works.
 21. Toggle `Freeze Layout` off and confirm layout editing resumes immediately, even while the simulation is still running.
-22. Press the spacebar after using toolbar buttons and confirm it does not retrigger the previous button action.
-23. Open `RunBlock0ASmoke.exe`.
-24. The script initializes the Visual Studio C++ toolchain.
-25. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-26. It runs the produced smoke test.
-27. The smoke test creates one zone, one location, and one wall.
-28. It asserts the summary counts and prints the Block 0A validation message.
+22. Press the spacebar after using toolbar buttons and confirm it toggles simulation instead of retriggering the previous button action.
+23. Save the layout, refresh or reopen the editor, and confirm the camera returns to the saved zoom and pan.
+24. Open `RunBlock0ASmoke.exe`.
+25. The script initializes the Visual Studio C++ toolchain.
+26. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+27. It runs the produced smoke test.
+28. The smoke test creates one zone, one location, and one wall.
+29. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
