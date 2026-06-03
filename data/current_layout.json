@@ -17,13 +17,20 @@
     },
     "drawLayout": true,
     "drawGrid": true,
-    "drawLabels": true
+    "drawLabels": false
   },
   "editor": {
     "snapToGrid": true,
     "snapSize": 10,
     "labelFontSize": 8,
-    "labelMode": "Hover"
+    "labelMode": "Hover",
+    "savedView": {
+      "zoom": 2.7731,
+      "center": {
+        "x": 7149.42,
+        "y": 3827.12
+      }
+    }
   },
   "zones": [
     {
@@ -287,8 +294,8 @@
     {
       "id": "wall-roman-gate-south",
       "a": {
-        "x": 8090,
-        "y": 4210
+        "x": 8100,
+        "y": 4230
       },
       "b": {
         "x": 8100,

@@ -412,29 +412,6 @@ class LayoutEditorApp:
         self.inspector_body = ttk.Frame(inspector_frame)
         self.inspector_body.grid(row=0, column=0, sticky="ew")
 
-        agent_details_frame = ttk.LabelFrame(sidebar, text="Last Clicked Agent", padding=12)
-        agent_details_frame.pack(fill="both")
-        agent_details_frame.columnconfigure(0, weight=1)
-        agent_details_frame.rowconfigure(0, weight=1)
-        self.agent_details_canvas = tk.Canvas(
-            agent_details_frame,
-            height=290,
-            highlightthickness=0,
-            borderwidth=0,
-            background=self.root.cget("background"),
-        )
-        self.agent_details_canvas.grid(row=0, column=0, sticky="nsew")
-        agent_details_scrollbar = ttk.Scrollbar(agent_details_frame, orient="vertical", command=self.agent_details_canvas.yview)
-        agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
-        self.agent_details_canvas.configure(yscrollcommand=agent_details_scrollbar.set)
-        self.agent_details_body = ttk.Frame(self.agent_details_canvas)
-        self.agent_details_window = self.agent_details_canvas.create_window((0, 0), window=self.agent_details_body, anchor="nw")
-        self.agent_details_body.bind("<Configure>", self.on_agent_details_body_configure)
-        self.agent_details_canvas.bind("<Configure>", self.on_agent_details_canvas_configure)
-        self.agent_details_canvas.bind("<MouseWheel>", self.on_agent_details_mousewheel)
-        self.agent_details_canvas.bind("<Button-4>", self.on_agent_details_mousewheel)
-        self.agent_details_canvas.bind("<Button-5>", self.on_agent_details_mousewheel)
-
         top_bar = ttk.Frame(viewer)
         top_bar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         top_bar.columnconfigure(0, weight=1)
@@ -481,11 +458,33 @@ class LayoutEditorApp:
         footer_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         footer_frame.columnconfigure(0, weight=1)
 
+        agent_details_frame = ttk.LabelFrame(footer_frame, text="Agent Attributes", padding=8)
+        agent_details_frame.grid(row=0, column=0, sticky="ew")
+        agent_details_frame.columnconfigure(0, weight=1)
+        self.agent_details_canvas = tk.Canvas(
+            agent_details_frame,
+            height=135,
+            highlightthickness=0,
+            borderwidth=0,
+            background=self.root.cget("background"),
+        )
+        self.agent_details_canvas.grid(row=0, column=0, sticky="ew")
+        agent_details_scrollbar = ttk.Scrollbar(agent_details_frame, orient="vertical", command=self.agent_details_canvas.yview)
+        agent_details_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.agent_details_canvas.configure(yscrollcommand=agent_details_scrollbar.set)
+        self.agent_details_body = ttk.Frame(self.agent_details_canvas)
+        self.agent_details_window = self.agent_details_canvas.create_window((0, 0), window=self.agent_details_body, anchor="nw")
+        self.agent_details_body.bind("<Configure>", self.on_agent_details_body_configure)
+        self.agent_details_canvas.bind("<Configure>", self.on_agent_details_canvas_configure)
+        self.agent_details_canvas.bind("<MouseWheel>", self.on_agent_details_mousewheel)
+        self.agent_details_canvas.bind("<Button-4>", self.on_agent_details_mousewheel)
+        self.agent_details_canvas.bind("<Button-5>", self.on_agent_details_mousewheel)
+
         self.selection_label = ttk.Label(footer_frame, textvariable=self.selection_var, wraplength=960, justify="left")
-        self.selection_label.grid(row=0, column=0, sticky="w")
+        self.selection_label.grid(row=1, column=0, sticky="w", pady=(6, 0))
 
         self.footer_label = ttk.Label(footer_frame, text="", wraplength=960, justify="left")
-        self.footer_label.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.footer_label.grid(row=2, column=0, sticky="w", pady=(4, 0))
 
     def _make_entry(self, parent: ttk.Frame, label: str, variable: tk.StringVar, row: int, column: int, callback) -> None:
         field = ttk.Frame(parent)
@@ -1069,7 +1068,7 @@ class LayoutEditorApp:
         elif self.selected_kind == "agent":
             self.selection_var.set(
                 f"{selected['label']} selected. Drag the agent freely across the map while the simulation runs or pauses. "
-                f"Current speed: {int(round(selected['moveSpeed']))}. Live hunger, thirst, and status are pinned in the Last Clicked Agent panel."
+                f"Speed: {int(round(selected['moveSpeed']))}. Live hunger, thirst, and status are in the bottom Agent Attributes panel."
             )
         else:
             self.selection_var.set(
@@ -1132,8 +1131,8 @@ class LayoutEditorApp:
         if agent is None:
             ttk.Label(
                 self.agent_details_body,
-                text="Click a Roman agent on the map or in the list to pin its live runtime attributes here.",
-                wraplength=320,
+                text="Click a Roman agent to show its live runtime attributes here.",
+                wraplength=900,
                 justify="left",
             ).pack(anchor="w")
             self.agent_details_canvas.yview_moveto(0.0)
@@ -1142,11 +1141,8 @@ class LayoutEditorApp:
 
         ttk.Label(
             self.agent_details_body,
-            text=(
-                "Live runtime snapshot. This pane follows the last clicked agent, updates while the simulation runs, "
-                "and is intentionally separate from saved layout authoring."
-            ),
-            wraplength=320,
+            text="Live snapshot of the last clicked agent.",
+            wraplength=900,
             justify="left",
         ).pack(anchor="w", pady=(0, 10))
 
@@ -1245,7 +1241,7 @@ class LayoutEditorApp:
         }
         ttk.Label(
             self.inspector_body,
-            text="Runtime-only Roman agent. These edits do not change the saved map layout. Full live attributes are shown in Last Clicked Agent below.",
+            text="Runtime-only Roman agent. These edits do not change the saved map layout. Full live attributes are shown in the bottom panel.",
             wraplength=320,
             justify="left",
         ).pack(anchor="w", pady=(0, 8))
