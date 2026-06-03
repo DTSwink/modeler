@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+from datetime import date, datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 
 ROOT = Path(__file__).resolve().parent
+SCRIPT_PATH = Path(__file__).resolve()
 DATA_DIR = ROOT / "data"
 DEFAULT_LAYOUT_PATH = DATA_DIR / "default_layout.json"
 CURRENT_LAYOUT_PATH = DATA_DIR / "current_layout.json"
@@ -122,7 +124,11 @@ def blend_hex(color_a: str, color_b: str, weight_b: float) -> str:
 
 
 def today_stamp() -> str:
-    return __import__("datetime").date.today().isoformat()
+    return date.today().isoformat()
+
+
+def format_build_stamp(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
 
 def distance(a: dict, b: dict) -> float:
@@ -166,9 +172,12 @@ def point_to_segment_distance(point: dict, a: dict, b: dict) -> float:
 class LayoutEditorApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Modeler Layout Editor")
+        self.window_title_base = "Modeler Layout Editor"
+        self.root.title(self.window_title_base)
         self.root.geometry("1500x920")
         self.root.minsize(1180, 760)
+        self.loaded_build_mtime = SCRIPT_PATH.stat().st_mtime
+        self.restart_needed = False
 
         self.default_layout = read_json(DEFAULT_LAYOUT_PATH)
         self.layout = self._load_current_layout()
@@ -193,6 +202,7 @@ class LayoutEditorApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._sync_world_controls()
         self.render_all()
+        self.root.after(2500, self.poll_for_editor_code_update)
 
     def _load_current_layout(self) -> dict:
         if CURRENT_LAYOUT_PATH.exists():
@@ -481,9 +491,24 @@ class LayoutEditorApp:
         self._sync_world_controls()
 
     def update_meta_and_title(self) -> None:
+        build_text = f"UI {format_build_stamp(self.loaded_build_mtime)}"
+        restart_text = " | Restart to load newer UI" if self.restart_needed else ""
         dirty_suffix = " | Unsaved changes" if self.dirty else ""
-        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']}{dirty_suffix}")
-        self.root.title("Modeler Layout Editor*" if self.dirty else "Modeler Layout Editor")
+        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']} | {build_text}{restart_text}{dirty_suffix}")
+        title = self.window_title_base
+        if self.restart_needed:
+            title += " - Restart Needed"
+        if self.dirty:
+            title += "*"
+        self.root.title(title)
+
+    def poll_for_editor_code_update(self) -> None:
+        try:
+            self.restart_needed = SCRIPT_PATH.stat().st_mtime > self.loaded_build_mtime + 0.5
+        except OSError:
+            self.restart_needed = False
+        self.update_meta_and_title()
+        self.root.after(2500, self.poll_for_editor_code_update)
 
     def mark_dirty(self, message: str) -> None:
         self.dirty = self.layout != self.saved_layout

@@ -16,6 +16,8 @@ Open `ModelerLayoutEditor.pyw` for the native local layout editor.
 
 Double-click `StartModeler.bat` to launch the local editor window from Windows.
 
+The launcher is meant to open the latest editor build. If editor code changed on disk after a window was already running, a fresh instance should open instead of reviving the stale one. The editor title and top metadata also carry a UI build stamp so outdated windows are easier to spot.
+
 Open `RunBlock0ASmoke.exe` to launch the current pure C++ smoke test without typing commands.
 
 `BuildAndTestCore.bat` remains the underlying script if we need to inspect or change the build flow.

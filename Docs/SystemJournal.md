@@ -154,6 +154,7 @@ The editor currently supports:
 - Adjustable `Label Text Size` for on-map labels.
 - Adaptive label density so full-scene views show major geography first and dense local detail later.
 - Point labels rendered as decluttered callouts instead of raw overlapping text.
+- A visible UI build stamp plus restart-needed title state when the editor code on disk is newer than the running window.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
 - Explicit save into `data/current_layout.json`.
@@ -173,6 +174,8 @@ The intended non-technical entry point is the desktop shortcut:
 - `C:\Users\singerie\Desktop\Modeler Current Simulation.lnk`
 
 That shortcut targets the Python-backed local editor instead of a browser page or a copied launcher executable. This avoids the earlier failure mode where a moved executable could no longer find repo-relative files.
+
+The launcher should also avoid reviving a stale editor window after code changes. If the script on disk is newer than the running editor process, launching from the shortcut should start a fresh instance so UI work is actually visible.
 
 If the shortcut ever disappears, recreate it with `tools/desktop/CreateCurrentSimulationShortcut.ps1`.
 
