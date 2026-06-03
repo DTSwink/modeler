@@ -116,16 +116,24 @@ class LayoutEditorApp:
 
         self.default_layout = read_json(DEFAULT_LAYOUT_PATH)
         self.layout = self._load_current_layout()
+        self.saved_layout = deep_copy(self.layout)
+        self.dirty = False
         self.selected_kind = "zone"
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
         self.drag_state = None
+        self.pan_state = None
         self.view = None
+        self.view_zoom = 1.0
+        self.view_center = self.default_view_center()
+        self.undo_stack: list[dict] = []
+        self.max_undo_states = 80
         self.suppress_tree_event = False
-        self.status_var = tk.StringVar(value="Ready. Draft autosaves to data/current_layout.json.")
+        self.status_var = tk.StringVar(value="Ready. Click Save Layout to keep changes in data/current_layout.json.")
         self.meta_var = tk.StringVar()
         self.selection_var = tk.StringVar()
 
         self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._sync_world_controls()
         self.render_all()
 
@@ -145,6 +153,7 @@ class LayoutEditorApp:
         layout.setdefault("editor", {})
         layout["editor"].setdefault("snapToGrid", True)
         layout["editor"].setdefault("snapSize", 50)
+        layout["editor"].setdefault("labelFontSize", 12)
         layout.setdefault("root", {})
         layout["root"].setdefault("cellSize", 100)
         layout["root"].setdefault("gridSize", {"x": 240, "y": 80})
@@ -218,10 +227,11 @@ class LayoutEditorApp:
         button_row = ttk.Frame(sidebar)
         button_row.pack(fill="x", pady=(0, 12))
         ttk.Button(button_row, text="Save Layout", command=self.save_layout_now).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(button_row, text="Undo", command=self.undo_last_change).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(button_row, text="Reset Draft", command=self.reset_layout).grid(row=0, column=2, sticky="ew")
         ttk.Button(button_row, text="Import JSON", command=self.import_json).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0))
         ttk.Button(button_row, text="Export JSON", command=self.export_json).grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0))
-        ttk.Button(button_row, text="Open Data Folder", command=self.open_data_folder).grid(row=0, column=2, rowspan=2, sticky="nsew", pady=(0, 0))
+        ttk.Button(button_row, text="Open Data Folder", command=self.open_data_folder).grid(row=1, column=2, sticky="ew", pady=(6, 0))
         button_row.columnconfigure((0, 1, 2), weight=1)
 
         ttk.Label(sidebar, textvariable=self.status_var, wraplength=340, justify="left").pack(anchor="w", pady=(10, 14))
@@ -235,6 +245,8 @@ class LayoutEditorApp:
         self.grid_x_var = tk.StringVar()
         self.grid_y_var = tk.StringVar()
         self.snap_size_var = tk.StringVar()
+        self.label_font_size_var = tk.StringVar()
+        self.zoom_percent_var = tk.StringVar()
         self.draw_grid_var = tk.BooleanVar()
         self.draw_labels_var = tk.BooleanVar()
         self.snap_enabled_var = tk.BooleanVar()
@@ -243,9 +255,25 @@ class LayoutEditorApp:
         self._make_entry(world_frame, "Snap Size", self.snap_size_var, 0, 1, self.apply_world_settings)
         self._make_entry(world_frame, "Grid Width", self.grid_x_var, 1, 0, self.apply_world_settings)
         self._make_entry(world_frame, "Grid Height", self.grid_y_var, 1, 1, self.apply_world_settings)
-        ttk.Checkbutton(world_frame, text="Draw grid", variable=self.draw_grid_var, command=self.apply_world_settings).grid(row=2, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(world_frame, text="Draw labels", variable=self.draw_labels_var, command=self.apply_world_settings).grid(row=2, column=1, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(world_frame, text="Snap moves to grid", variable=self.snap_enabled_var, command=self.apply_world_settings).grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self._make_entry(world_frame, "Label Text Size", self.label_font_size_var, 2, 0, self.apply_world_settings)
+        ttk.Checkbutton(world_frame, text="Draw grid", variable=self.draw_grid_var, command=self.apply_world_settings).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(world_frame, text="Draw labels", variable=self.draw_labels_var, command=self.apply_world_settings).grid(row=3, column=1, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(world_frame, text="Snap moves to grid", variable=self.snap_enabled_var, command=self.apply_world_settings).grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
+        view_frame = ttk.LabelFrame(sidebar, text="View", padding=12)
+        view_frame.pack(fill="x", pady=(0, 12))
+        view_frame.columnconfigure((0, 1, 2), weight=1)
+        ttk.Label(
+            view_frame,
+            text="Scroll on the map to zoom. Right-drag the map to pan around.",
+            wraplength=320,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        ttk.Button(view_frame, text="Zoom Out", command=self.zoom_out).grid(row=1, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(view_frame, text="Fit View", command=self.reset_view).grid(row=1, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(view_frame, text="Zoom In", command=self.zoom_in).grid(row=1, column=2, sticky="ew")
+        ttk.Label(view_frame, text="Zoom").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(view_frame, textvariable=self.zoom_percent_var).grid(row=2, column=1, columnspan=2, sticky="w", pady=(10, 0))
 
         tree_frame = ttk.LabelFrame(sidebar, text="Layout Items", padding=12)
         tree_frame.pack(fill="both", expand=True, pady=(0, 12))
@@ -276,7 +304,7 @@ class LayoutEditorApp:
 
         viewer_hint = ttk.Label(
             top_bar,
-            text="Click to select. Drag bodies to move, drag handles to reshape, use the inspector for exact values.",
+            text="Click to select. Drag bodies to move, drag handles to reshape, scroll to zoom, right-drag to pan, and use the inspector for exact values.",
             wraplength=900,
             justify="left",
         )
@@ -289,13 +317,22 @@ class LayoutEditorApp:
 
         self.canvas = tk.Canvas(canvas_frame, bg="#ece5d6", highlightthickness=1, highlightbackground="#b7ab98")
         self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.canvas.bind("<Enter>", lambda _event: self.canvas.focus_set())
         self.canvas.bind("<ButtonPress-1>", self.on_canvas_press)
         self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
+        self.canvas.bind("<ButtonPress-3>", self.on_canvas_pan_press)
+        self.canvas.bind("<B3-Motion>", self.on_canvas_pan_drag)
+        self.canvas.bind("<ButtonRelease-3>", self.on_canvas_pan_release)
+        self.canvas.bind("<MouseWheel>", self.on_canvas_mousewheel)
+        self.canvas.bind("<Button-4>", self.on_canvas_mousewheel)
+        self.canvas.bind("<Button-5>", self.on_canvas_mousewheel)
         self.canvas.bind("<Motion>", self.on_canvas_motion)
         self.canvas.bind("<Leave>", lambda _event: self.canvas.configure(cursor=""))
         self.canvas.bind("<Configure>", lambda _event: self.render_canvas())
         self.root.bind("<Control-s>", self.save_layout_now)
+        self.root.bind("<Control-z>", self.undo_last_change)
+        self.root.bind("<Control-0>", self.reset_view)
 
         footer_frame = ttk.Frame(viewer)
         footer_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -324,16 +361,164 @@ class LayoutEditorApp:
         self.grid_x_var.set(str(root["gridSize"]["x"]))
         self.grid_y_var.set(str(root["gridSize"]["y"]))
         self.snap_size_var.set(str(editor["snapSize"]))
+        self.label_font_size_var.set(str(editor["labelFontSize"]))
         self.draw_grid_var.set(bool(root["drawGrid"]))
         self.draw_labels_var.set(bool(root["drawLabels"]))
         self.snap_enabled_var.set(bool(editor["snapToGrid"]))
+        self.zoom_percent_var.set(f"{int(round(self.view_zoom * 100))}%")
+
+    def world_dimensions(self) -> tuple[float, float]:
+        return (
+            max(1.0, float(self.layout["root"]["gridSize"]["x"] * self.layout["root"]["cellSize"])),
+            max(1.0, float(self.layout["root"]["gridSize"]["y"] * self.layout["root"]["cellSize"])),
+        )
+
+    def default_view_center(self) -> dict:
+        world_width, world_height = self.world_dimensions()
+        return {
+            "x": world_width * 0.5,
+            "y": world_height * 0.5,
+        }
+
+    def capture_state(self) -> dict:
+        return {
+            "layout": deep_copy(self.layout),
+            "selected_kind": self.selected_kind,
+            "selected_id": self.selected_id,
+        }
+
+    def record_undo_state(self, snapshot: dict) -> None:
+        if self.undo_stack and self.undo_stack[-1] == snapshot:
+            return
+        self.undo_stack.append(snapshot)
+        if len(self.undo_stack) > self.max_undo_states:
+            self.undo_stack.pop(0)
+
+    def ensure_valid_selection(self) -> None:
+        if self.selected_kind in {"zone", "point", "wall"} and self.selected_id is not None:
+            for item in self.layout[f"{self.selected_kind}s"]:
+                if item["id"] == self.selected_id:
+                    return
+        for kind in ("zone", "point", "wall"):
+            items = self.layout[f"{kind}s"]
+            if items:
+                self.selected_kind = kind
+                self.selected_id = items[0]["id"]
+                return
+        self.selected_kind = "zone"
+        self.selected_id = None
+
+    def apply_snapshot(self, snapshot: dict) -> None:
+        self.layout = self._normalize_layout(snapshot["layout"])
+        self.selected_kind = snapshot.get("selected_kind", "zone")
+        self.selected_id = snapshot.get("selected_id")
+        self.ensure_valid_selection()
+        self.dirty = self.layout != self.saved_layout
+        self._sync_world_controls()
+
+    def update_meta_and_title(self) -> None:
+        dirty_suffix = " | Unsaved changes" if self.dirty else ""
+        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']}{dirty_suffix}")
+        self.root.title("Modeler Layout Editor*" if self.dirty else "Modeler Layout Editor")
+
+    def mark_dirty(self, message: str) -> None:
+        self.dirty = self.layout != self.saved_layout
+        self.status_var.set(message)
+        self.update_meta_and_title()
+
+    def commit_layout_change(self, before_state: dict, message: str, *, sync_world: bool = False) -> bool:
+        changed = before_state["layout"] != self.layout
+        if sync_world:
+            self._sync_world_controls()
+        if changed:
+            self.record_undo_state(before_state)
+            self.mark_dirty(message)
+        else:
+            self.update_meta_and_title()
+        self.render_all()
+        return changed
+
+    def clamp_view_center(self, center: dict, scale: float, width: float, height: float, world_width: float, world_height: float) -> dict:
+        if scale <= 0:
+            return self.default_view_center()
+        visible_width = width / scale
+        visible_height = height / scale
+        if visible_width >= world_width:
+            clamped_x = world_width * 0.5
+        else:
+            half_width = visible_width * 0.5
+            clamped_x = min(max(center["x"], half_width), world_width - half_width)
+        if visible_height >= world_height:
+            clamped_y = world_height * 0.5
+        else:
+            half_height = visible_height * 0.5
+            clamped_y = min(max(center["y"], half_height), world_height - half_height)
+        return {
+            "x": clamped_x,
+            "y": clamped_y,
+        }
+
+    def base_view_scale(self, width: int, height: int) -> float:
+        world_width, world_height = self.world_dimensions()
+        pad = 28
+        inner_width = max(1, width - pad * 2)
+        inner_height = max(1, height - pad * 2)
+        return min(inner_width / world_width, inner_height / world_height)
+
+    def reset_view_state(self) -> None:
+        self.view_zoom = 1.0
+        self.view_center = self.default_view_center()
+        self.zoom_percent_var.set("100%")
+
+    def zoom_by_factor(self, factor: float, anchor_canvas: dict | None = None) -> None:
+        if self.view is None:
+            return
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, self.canvas.winfo_height())
+        if anchor_canvas is None:
+            anchor_canvas = {
+                "x": width * 0.5,
+                "y": height * 0.5,
+            }
+        anchor_world = self.canvas_to_world(anchor_canvas)
+        next_zoom = min(8.0, max(0.35, self.view_zoom * factor))
+        if abs(next_zoom - self.view_zoom) < 0.0001:
+            return
+        world_width, world_height = self.world_dimensions()
+        base_scale = self.base_view_scale(width, height)
+        new_scale = base_scale * next_zoom
+        next_center = {
+            "x": anchor_world["x"] - (anchor_canvas["x"] - width * 0.5) / new_scale,
+            "y": anchor_world["y"] - (anchor_canvas["y"] - height * 0.5) / new_scale,
+        }
+        self.view_zoom = next_zoom
+        self.view_center = self.clamp_view_center(next_center, new_scale, width, height, world_width, world_height)
+        self.zoom_percent_var.set(f"{int(round(self.view_zoom * 100))}%")
+        self.render_canvas()
+        self.render_stats_and_labels()
+
+    def zoom_in(self) -> None:
+        self.zoom_by_factor(1.2)
+
+    def zoom_out(self) -> None:
+        self.zoom_by_factor(1 / 1.2)
+
+    def reset_view(self, _event=None) -> str | None:
+        self.reset_view_state()
+        self.render_canvas()
+        self.render_stats_and_labels()
+        if _event is not None:
+            return "break"
+        return None
 
     def apply_world_settings(self, _event=None) -> None:
+        before_state = self.capture_state()
         try:
             self.layout["root"]["cellSize"] = max(1, int(float(self.cell_size_var.get() or 1)))
             self.layout["root"]["gridSize"]["x"] = max(1, int(float(self.grid_x_var.get() or 1)))
             self.layout["root"]["gridSize"]["y"] = max(1, int(float(self.grid_y_var.get() or 1)))
             self.layout["editor"]["snapSize"] = max(1, int(float(self.snap_size_var.get() or 1)))
+            self.layout["editor"]["labelFontSize"] = max(8, int(float(self.label_font_size_var.get() or 8)))
             self.layout["root"]["drawGrid"] = bool(self.draw_grid_var.get())
             self.layout["root"]["drawLabels"] = bool(self.draw_labels_var.get())
             self.layout["editor"]["snapToGrid"] = bool(self.snap_enabled_var.get())
@@ -341,8 +526,12 @@ class LayoutEditorApp:
             self.status_var.set("World settings ignored until the numbers are valid.")
             return
 
-        self.touch_and_save("Autosaved world settings.")
-        self.render_all()
+        world_width, world_height = self.world_dimensions()
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, self.canvas.winfo_height())
+        current_scale = max(self.base_view_scale(width, height) * self.view_zoom, 0.0001)
+        self.view_center = self.clamp_view_center(self.view_center, current_scale, width, height, world_width, world_height)
+        self.commit_layout_change(before_state, "Updated world settings. Changes are not saved yet.", sync_world=True)
 
     def open_data_folder(self) -> None:
         subprocess.Popen(["explorer", str(DATA_DIR)])
@@ -368,35 +557,68 @@ class LayoutEditorApp:
         )
         if not path:
             return
+        before_state = self.capture_state()
         try:
             self.layout = self._normalize_layout(read_json(Path(path)))
             self.selected_kind = "zone"
             self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
-            self.touch_and_save(f"Imported layout from {path}")
+            self.reset_view_state()
             self._sync_world_controls()
-            self.render_all()
+            self.commit_layout_change(before_state, f"Imported layout from {path}. Changes are not saved yet.")
         except Exception as error:
             messagebox.showerror("Import Failed", f"Could not import JSON.\n\n{error}")
 
     def reset_layout(self) -> None:
         if not messagebox.askyesno("Reset Draft", "Reset the current draft to the default layout?"):
             return
+        before_state = self.capture_state()
         self.layout = self._normalize_layout(deep_copy(self.default_layout))
         self.selected_kind = "zone"
         self.selected_id = self.layout["zones"][0]["id"] if self.layout["zones"] else None
+        self.reset_view_state()
         self._sync_world_controls()
-        self.touch_and_save("Reset layout to default.")
-        self.render_all()
+        self.commit_layout_change(before_state, "Reset layout to default. Changes are not saved yet.")
 
     def touch_and_save(self, message: str) -> None:
         self.layout["updated"] = today_stamp()
         write_json(CURRENT_LAYOUT_PATH, self.layout)
+        self.saved_layout = deep_copy(self.layout)
+        self.dirty = False
         self.status_var.set(message)
-        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']}")
+        self.update_meta_and_title()
 
-    def save_layout_now(self, _event=None) -> None:
+    def save_layout_now(self, _event=None) -> str | None:
         self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
         self.render_stats_and_labels()
+        if _event is not None:
+            return "break"
+        return None
+
+    def undo_last_change(self, _event=None) -> str | None:
+        if not self.undo_stack:
+            self.status_var.set("Nothing to undo yet.")
+            if _event is not None:
+                return "break"
+            return None
+        snapshot = self.undo_stack.pop()
+        self.apply_snapshot(snapshot)
+        self.status_var.set("Undid the last layout change.")
+        self.update_meta_and_title()
+        self.render_all()
+        if _event is not None:
+            return "break"
+        return None
+
+    def on_close(self) -> None:
+        if not self.dirty:
+            self.root.destroy()
+            return
+        decision = messagebox.askyesnocancel("Unsaved Changes", "Save layout changes before closing?")
+        if decision is None:
+            return
+        if decision:
+            self.touch_and_save(f"Saved layout to {CURRENT_LAYOUT_PATH}")
+        self.root.destroy()
 
     def render_all(self) -> None:
         self.render_tree()
@@ -405,7 +627,7 @@ class LayoutEditorApp:
         self.render_stats_and_labels()
 
     def render_stats_and_labels(self) -> None:
-        self.meta_var.set(f"Block {self.layout['block']} | {self.layout['stage']} | {self.layout['updated']}")
+        self.update_meta_and_title()
         selected = self.get_selected_item()
         if selected is None:
             self.selection_var.set("No item selected. Click a marker on the map or choose one in the list.")
@@ -544,6 +766,7 @@ class LayoutEditorApp:
         combo.bind("<<ComboboxSelected>>", callback)
 
     def _apply_zone_inspector(self, zone: dict, vars_map: dict[str, tk.StringVar]) -> None:
+        before_state = self.capture_state()
         try:
             zone["label"] = vars_map["label"].get().strip() or zone["label"]
             zone["type"] = vars_map["type"].get()
@@ -557,10 +780,10 @@ class LayoutEditorApp:
         except ValueError:
             self.status_var.set("Zone inspector ignored until the numbers are valid.")
             return
-        self.touch_and_save("Autosaved zone edit.")
-        self.render_all()
+        self.commit_layout_change(before_state, "Edited zone. Changes are not saved yet.")
 
     def _apply_point_inspector(self, point: dict, vars_map: dict[str, tk.StringVar]) -> None:
+        before_state = self.capture_state()
         try:
             point["label"] = vars_map["label"].get().strip() or point["label"]
             point["type"] = vars_map["type"].get()
@@ -573,10 +796,10 @@ class LayoutEditorApp:
         except ValueError:
             self.status_var.set("Point inspector ignored until the numbers are valid.")
             return
-        self.touch_and_save("Autosaved point edit.")
-        self.render_all()
+        self.commit_layout_change(before_state, "Edited point. Changes are not saved yet.")
 
     def _apply_wall_inspector(self, wall: dict, vars_map: dict[str, tk.StringVar]) -> None:
+        before_state = self.capture_state()
         try:
             wall["faction"] = vars_map["faction"].get()
             wall["thickness"] = max(10.0, float(vars_map["thickness"].get()))
@@ -587,8 +810,7 @@ class LayoutEditorApp:
         except ValueError:
             self.status_var.set("Wall inspector ignored until the numbers are valid.")
             return
-        self.touch_and_save("Autosaved wall edit.")
-        self.render_all()
+        self.commit_layout_change(before_state, "Edited wall. Changes are not saved yet.")
 
     def get_selected_item(self) -> dict | None:
         items = self.layout[f"{self.selected_kind}s"] if self.selected_kind in {"zone", "point", "wall"} else []
@@ -625,12 +847,14 @@ class LayoutEditorApp:
         if self.layout["root"]["drawGrid"]:
             for x in range(0, self.layout["root"]["gridSize"]["x"] + 1, 4):
                 world_x = x * self.layout["root"]["cellSize"]
-                screen = self.world_to_canvas({"x": world_x, "y": 0})
-                self.canvas.create_line(screen["x"], view["offsetY"], screen["x"], view["offsetY"] + view["drawHeight"], fill="#d4cab8")
+                top = self.world_to_canvas({"x": world_x, "y": 0})
+                bottom = self.world_to_canvas({"x": world_x, "y": view["worldHeight"]})
+                self.canvas.create_line(top["x"], top["y"], bottom["x"], bottom["y"], fill="#d4cab8")
             for y in range(0, self.layout["root"]["gridSize"]["y"] + 1, 4):
                 world_y = y * self.layout["root"]["cellSize"]
-                screen = self.world_to_canvas({"x": 0, "y": world_y})
-                self.canvas.create_line(view["offsetX"], screen["y"], view["offsetX"] + view["drawWidth"], screen["y"], fill="#d4cab8")
+                left = self.world_to_canvas({"x": 0, "y": world_y})
+                right = self.world_to_canvas({"x": view["worldWidth"], "y": world_y})
+                self.canvas.create_line(left["x"], left["y"], right["x"], right["y"], fill="#d4cab8")
 
         if self.layout["root"]["drawLayout"]:
             for zone in sorted(self.layout["zones"], key=lambda item: item.get("priority", 0)):
@@ -644,31 +868,26 @@ class LayoutEditorApp:
         if selected:
             self.draw_handles(selected)
 
-        self.canvas.create_rectangle(
-            view["offsetX"],
-            view["offsetY"],
-            view["offsetX"] + view["drawWidth"],
-            view["offsetY"] + view["drawHeight"],
-            outline="#8a7d6a",
-            width=2,
-        )
+        top_left = self.world_to_canvas({"x": 0, "y": 0})
+        bottom_right = self.world_to_canvas({"x": view["worldWidth"], "y": view["worldHeight"]})
+        self.canvas.create_rectangle(top_left["x"], top_left["y"], bottom_right["x"], bottom_right["y"], outline="#8a7d6a", width=2)
 
     def compute_view(self, width: int, height: int) -> dict:
-        world_width = self.layout["root"]["gridSize"]["x"] * self.layout["root"]["cellSize"]
-        world_height = self.layout["root"]["gridSize"]["y"] * self.layout["root"]["cellSize"]
-        pad = 28
-        inner_width = max(1, width - pad * 2)
-        inner_height = max(1, height - pad * 2)
-        scale = min(inner_width / world_width, inner_height / world_height)
+        world_width, world_height = self.world_dimensions()
+        base_scale = self.base_view_scale(width, height)
+        scale = base_scale * self.view_zoom
+        center = self.clamp_view_center(self.view_center, scale, width, height, world_width, world_height)
+        self.view_center = center
         draw_width = world_width * scale
         draw_height = world_height * scale
-        offset_x = (width - draw_width) * 0.5
-        offset_y = (height - draw_height) * 0.5
+        offset_x = width * 0.5 - center["x"] * scale
+        offset_y = height * 0.5 - center["y"] * scale
         return {
             "width": width,
             "height": height,
             "worldWidth": world_width,
             "worldHeight": world_height,
+            "baseScale": base_scale,
             "scale": scale,
             "drawWidth": draw_width,
             "drawHeight": draw_height,
@@ -693,6 +912,7 @@ class LayoutEditorApp:
         fill = zone["color"]
         outline = "#294fb6" if self.selected_kind == "zone" and self.selected_id == zone["id"] else "#5f564a"
         width = 3 if self.selected_kind == "zone" and self.selected_id == zone["id"] else 1
+        label_font_size = max(8, int(self.layout["editor"]["labelFontSize"]))
         points = []
         for corner in corners:
             screen = self.world_to_canvas(corner)
@@ -700,7 +920,7 @@ class LayoutEditorApp:
         self.canvas.create_polygon(points, fill=fill, outline=outline, width=width, stipple="gray25")
         if self.layout["root"]["drawLabels"]:
             center = self.world_to_canvas(zone["center"])
-            self.canvas.create_text(center["x"], center["y"], text=zone["label"], font=("Georgia", 12, "bold"), fill="#1f1a15")
+            self.canvas.create_text(center["x"], center["y"], text=zone["label"], font=("Georgia", label_font_size, "bold"), fill="#1f1a15")
 
     def draw_wall(self, wall: dict) -> None:
         a = self.world_to_canvas(wall["a"])
@@ -713,6 +933,7 @@ class LayoutEditorApp:
         screen = self.world_to_canvas(point["position"])
         color = "#2f6dff" if point["faction"] == "Roman" else "#c84836" if point["faction"] == "Ottoman" else "#7a6b56"
         radius = max(6, point["radius"] * self.view["scale"] * 0.12)
+        label_font_size = max(8, int(self.layout["editor"]["labelFontSize"]) - 1)
         self.canvas.create_oval(screen["x"] - radius, screen["y"] - radius, screen["x"] + radius, screen["y"] + radius, fill=color, outline="white", width=2)
         facing_length = radius + max(16, point["radius"] * self.view["scale"] * 0.14)
         self.canvas.create_line(
@@ -725,7 +946,7 @@ class LayoutEditorApp:
             arrow=tk.LAST,
         )
         if self.layout["root"]["drawLabels"]:
-            self.canvas.create_text(screen["x"] + 10, screen["y"] - 10, text=point["label"], anchor="sw", font=("Georgia", 11), fill="#1f1a15")
+            self.canvas.create_text(screen["x"] + 10, screen["y"] - 10, text=point["label"], anchor="sw", font=("Georgia", label_font_size), fill="#1f1a15")
 
     def zone_corners(self, zone: dict) -> list[dict]:
         half_x = zone["size"]["x"] * 0.5
@@ -828,6 +1049,7 @@ class LayoutEditorApp:
     def on_canvas_press(self, event: tk.Event) -> None:
         if self.view is None:
             return
+        self.canvas.focus_set()
         world_point = self.canvas_to_world({"x": event.x, "y": event.y})
         hit = self.hit_test(world_point)
         if not hit:
@@ -847,31 +1069,35 @@ class LayoutEditorApp:
         if item is None:
             return
 
+        before_state = self.capture_state()
         if hit["kind"] == "zone":
             self.drag_state = {
                 "type": "move-zone",
+                "beforeState": before_state,
                 "offset": {
                     "x": world_point["x"] - item["center"]["x"],
                     "y": world_point["y"] - item["center"]["y"],
                 },
             }
         elif hit["kind"] == "zone-handle":
-            self.drag_state = {"type": "resize-zone"}
+            self.drag_state = {"type": "resize-zone", "beforeState": before_state}
         elif hit["kind"] == "point":
             self.drag_state = {
                 "type": "move-point",
+                "beforeState": before_state,
                 "offset": {
                     "x": world_point["x"] - item["position"]["x"],
                     "y": world_point["y"] - item["position"]["y"],
                 },
             }
         elif hit["kind"] == "point-radius":
-            self.drag_state = {"type": "resize-point"}
+            self.drag_state = {"type": "resize-point", "beforeState": before_state}
         elif hit["kind"] == "point-facing":
-            self.drag_state = {"type": "rotate-point"}
+            self.drag_state = {"type": "rotate-point", "beforeState": before_state}
         elif hit["kind"] == "wall":
             self.drag_state = {
                 "type": "move-wall",
+                "beforeState": before_state,
                 "startPointer": world_point,
                 "startA": deep_copy(item["a"]),
                 "startB": deep_copy(item["b"]),
@@ -879,6 +1105,7 @@ class LayoutEditorApp:
         elif hit["kind"] == "wall-endpoint":
             self.drag_state = {
                 "type": "move-wall-endpoint",
+                "beforeState": before_state,
                 "endpoint": hit["endpoint"],
             }
 
@@ -919,20 +1146,69 @@ class LayoutEditorApp:
         elif drag_type == "move-wall-endpoint":
             item[self.drag_state["endpoint"]] = self.snap_point(world_point)
 
-        self.layout["updated"] = today_stamp()
-        self.status_var.set("Editing layout...")
+        self.status_var.set("Editing layout. Changes are not saved yet.")
         self.render_canvas()
         self.render_stats_and_labels()
 
     def on_canvas_release(self, _event: tk.Event) -> None:
         if self.drag_state is None:
             return
+        before_state = self.drag_state.get("beforeState")
         self.drag_state = None
-        self.touch_and_save("Autosaved layout edit.")
-        self.render_all()
+        if before_state is not None:
+            self.commit_layout_change(before_state, "Edited layout. Changes are not saved yet.")
+        else:
+            self.render_all()
+
+    def on_canvas_pan_press(self, event: tk.Event) -> None:
+        if self.view is None:
+            return
+        self.canvas.focus_set()
+        self.pan_state = {
+            "pointer": {"x": event.x, "y": event.y},
+            "center": deep_copy(self.view_center),
+        }
+        self.canvas.configure(cursor="fleur")
+
+    def on_canvas_pan_drag(self, event: tk.Event) -> None:
+        if self.pan_state is None or self.view is None:
+            return
+        dx = event.x - self.pan_state["pointer"]["x"]
+        dy = event.y - self.pan_state["pointer"]["y"]
+        self.view_center = self.clamp_view_center(
+            {
+                "x": self.pan_state["center"]["x"] - dx / self.view["scale"],
+                "y": self.pan_state["center"]["y"] - dy / self.view["scale"],
+            },
+            self.view["scale"],
+            self.view["width"],
+            self.view["height"],
+            self.view["worldWidth"],
+            self.view["worldHeight"],
+        )
+        self.render_canvas()
+        self.render_stats_and_labels()
+
+    def on_canvas_pan_release(self, _event: tk.Event) -> None:
+        self.pan_state = None
+        self.canvas.configure(cursor="")
+
+    def on_canvas_mousewheel(self, event: tk.Event) -> str:
+        if self.view is None:
+            return "break"
+        delta = getattr(event, "delta", 0)
+        if getattr(event, "num", None) == 4:
+            delta = 120
+        elif getattr(event, "num", None) == 5:
+            delta = -120
+        if delta == 0:
+            return "break"
+        factor = 1.12 if delta > 0 else 1 / 1.12
+        self.zoom_by_factor(factor, {"x": event.x, "y": event.y})
+        return "break"
 
     def on_canvas_motion(self, event: tk.Event) -> None:
-        if self.view is None or self.drag_state is not None:
+        if self.view is None or self.drag_state is not None or self.pan_state is not None:
             return
         world_point = self.canvas_to_world({"x": event.x, "y": event.y})
         hit = self.hit_test(world_point)
