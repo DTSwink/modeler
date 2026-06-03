@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 import subprocess
 import sys
@@ -10,8 +9,10 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from editor_runtime import RomanSimulationRuntime, format_speed_label
-from editor_view_state import normalize_saved_view, read_saved_view, write_saved_view
+from editor_runtime import RomanSimulationRuntime
+from editor_view_state import read_saved_view, write_saved_view
+from layout_document import deep_copy, normalize_layout, read_json, write_json
+from sim_geometry import clamp, distance, local_to_world, point_to_segment_distance, world_to_local
 
 
 ROOT = Path(__file__).resolve().parent
@@ -119,26 +120,6 @@ FACTIONS = [
 ]
 
 
-def read_json(path: Path) -> dict:
-    with path.open("r", encoding="utf-8-sig") as handle:
-        return json.load(handle)
-
-
-def write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-        handle.write("\n")
-
-
-def deep_copy(payload: dict) -> dict:
-    return json.loads(json.dumps(payload))
-
-
-def clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
-
-
 def hex_to_rgb(color: str) -> tuple[int, int, int]:
     color = color.lstrip("#")
     if len(color) != 6:
@@ -217,42 +198,17 @@ def format_build_stamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
 
-def distance(a: dict, b: dict) -> float:
-    return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+def format_sim_time(seconds: float) -> str:
+    total_seconds = max(0.0, float(seconds))
+    minutes = int(total_seconds // 60.0)
+    remainder = total_seconds - minutes * 60.0
+    return f"{minutes:02d}:{remainder:04.1f}"
 
 
-def local_to_world(point: dict, yaw_radians: float) -> dict:
-    cosine = math.cos(yaw_radians)
-    sine = math.sin(yaw_radians)
-    return {
-        "x": point["x"] * cosine - point["y"] * sine,
-        "y": point["x"] * sine + point["y"] * cosine,
-    }
-
-
-def world_to_local(point: dict, center: dict, yaw_radians: float) -> dict:
-    dx = point["x"] - center["x"]
-    dy = point["y"] - center["y"]
-    cosine = math.cos(-yaw_radians)
-    sine = math.sin(-yaw_radians)
-    return {
-        "x": dx * cosine - dy * sine,
-        "y": dx * sine + dy * cosine,
-    }
-
-
-def point_to_segment_distance(point: dict, a: dict, b: dict) -> float:
-    dx = b["x"] - a["x"]
-    dy = b["y"] - a["y"]
-    if dx == 0 and dy == 0:
-        return distance(point, a)
-    t = ((point["x"] - a["x"]) * dx + (point["y"] - a["y"]) * dy) / (dx * dx + dy * dy)
-    t = max(0.0, min(1.0, t))
-    projected = {
-        "x": a["x"] + dx * t,
-        "y": a["y"] + dy * t,
-    }
-    return distance(point, projected)
+def format_speed_label(multiplier: float) -> str:
+    if abs(multiplier - round(multiplier)) < 0.001:
+        return f"{int(round(multiplier))}x"
+    return f"{multiplier:g}x"
 
 
 class LayoutEditorApp:
@@ -320,61 +276,11 @@ class LayoutEditorApp:
         return layout
 
     def _normalize_layout(self, payload: dict) -> dict:
-        layout = deep_copy(payload)
-        layout.setdefault("editor", {})
-        layout["editor"].setdefault("snapToGrid", True)
-        layout["editor"].setdefault("snapSize", 50)
-        layout["editor"].setdefault("labelFontSize", 12)
-        layout["editor"].setdefault("labelMode", "Hover")
-        layout.setdefault("root", {})
-        layout["root"].setdefault("cellSize", 100)
-        layout["root"].setdefault("gridSize", {"x": 240, "y": 80})
-        layout["root"].setdefault("drawLayout", True)
-        layout["root"].setdefault("drawGrid", True)
-        layout["root"].setdefault("drawLabels", True)
-        layout.setdefault("zones", [])
-        if "points" not in layout and "locations" in layout:
-            layout["points"] = layout["locations"]
-        layout.setdefault("points", [])
-        layout["locations"] = layout["points"]
-        layout.setdefault("walls", [])
-        layout.setdefault("summary", "Editable layout marker foundation.")
-        layout.setdefault("footer", "Native local editor for the latest Modeler layout state.")
-        layout.setdefault("stage", "Engine-independent layout editor")
-        layout.setdefault("block", "0A")
-        layout.setdefault("updated", today_stamp())
-        normalize_saved_view(layout)
-
-        for index, zone in enumerate(layout["zones"]):
-            zone.setdefault("id", f"zone-{index + 1}")
-            zone.setdefault("label", zone["id"])
-            zone.setdefault("type", "Walkable")
-            zone.setdefault("faction", "Neutral")
-            zone.setdefault("color", "#bca278")
-            zone.setdefault("priority", 0)
-            zone.setdefault("yawRadians", 0.0)
-            zone.setdefault("center", {"x": 0.0, "y": 0.0})
-            zone.setdefault("size", {"x": 1000.0, "y": 1000.0})
-            zone["color"] = semantic_zone_color(zone["type"], zone["color"])
-
-        for index, point in enumerate(layout["points"]):
-            point.setdefault("id", f"point-{index + 1}")
-            point.setdefault("label", point["id"])
-            point.setdefault("type", "RallyPoint")
-            point.setdefault("faction", "Neutral")
-            point.setdefault("slotCount", 1)
-            point.setdefault("facingRadians", 0.0)
-            point.setdefault("radius", 100.0)
-            point.setdefault("position", {"x": 0.0, "y": 0.0})
-
-        for index, wall in enumerate(layout["walls"]):
-            wall.setdefault("id", f"wall-{index + 1}")
-            wall.setdefault("faction", "Neutral")
-            wall.setdefault("thickness", 100.0)
-            wall.setdefault("a", {"x": 0.0, "y": 0.0})
-            wall.setdefault("b", {"x": 1000.0, "y": 0.0})
-
-        return layout
+        return normalize_layout(
+            payload,
+            zone_color_resolver=semantic_zone_color,
+            updated_default=today_stamp(),
+        )
 
     def _build_ui(self) -> None:
         self.root.columnconfigure(0, weight=0)
@@ -676,7 +582,11 @@ class LayoutEditorApp:
 
     def update_simulation_summary(self) -> None:
         self.play_button_var.set("Pause" if self.simulation.running else "Play")
-        self.sim_summary_var.set(self.simulation.summary_text(freeze_layout=self.freeze_layout_var.get()))
+        state_text = "Running" if self.simulation.running else "Paused"
+        freeze_suffix = " | Layout frozen" if self.freeze_layout_var.get() else ""
+        self.sim_summary_var.set(
+            f"{state_text} | Sim {format_sim_time(self.simulation.time_seconds)} | {len(self.simulation.agents)} Roman agents | {format_speed_label(self.simulation.speed_multiplier)}{freeze_suffix}"
+        )
 
     def apply_simulation_speed(self, _event=None) -> str | None:
         try:

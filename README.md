@@ -8,6 +8,8 @@ The same native editor is now also the first runtime sandbox. Roman-side prototy
 
 The runtime stepping logic and saved camera-state logic are now split into dedicated helper modules so those behaviors can evolve without forcing unrelated editor UI changes.
 
+The future game core is intended to stay headless. Rendering and editor presentation are host layers around the simulation, not part of the simulation itself.
+
 For UI cleanup and readability review, prefer user-provided screenshots plus background or headless checks before foreground launches when possible. That lets us tune the editor without taking over the active screen.
 
 This repo should not contain an Unreal project during the core-building phase. The simulation, layout model, validation, and debug tooling are built outside Unreal first. Unreal integration happens later through a dedicated adapter/hook layer.

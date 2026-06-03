@@ -4,35 +4,7 @@ import math
 import random
 from copy import deepcopy
 
-
-def clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
-
-
-def distance(a: dict, b: dict) -> float:
-    return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
-
-
-def local_to_world(point: dict, yaw_radians: float) -> dict:
-    cosine = math.cos(yaw_radians)
-    sine = math.sin(yaw_radians)
-    return {
-        "x": point["x"] * cosine - point["y"] * sine,
-        "y": point["x"] * sine + point["y"] * cosine,
-    }
-
-
-def format_sim_time(seconds: float) -> str:
-    total_seconds = max(0.0, float(seconds))
-    minutes = int(total_seconds // 60.0)
-    remainder = total_seconds - minutes * 60.0
-    return f"{minutes:02d}:{remainder:04.1f}"
-
-
-def format_speed_label(multiplier: float) -> str:
-    if abs(multiplier - round(multiplier)) < 0.001:
-        return f"{int(round(multiplier))}x"
-    return f"{multiplier:g}x"
+from sim_geometry import clamp, distance, local_to_world
 
 
 class RomanSimulationRuntime:
@@ -76,11 +48,6 @@ class RomanSimulationRuntime:
             "size": {"x": world_width, "y": world_height},
             "yawRadians": 0.0,
         }
-
-    def summary_text(self, *, freeze_layout: bool) -> str:
-        state_text = "Running" if self.running else "Paused"
-        freeze_suffix = " | Layout frozen" if freeze_layout else ""
-        return f"{state_text} | Sim {format_sim_time(self.time_seconds)} | {len(self.agents)} Roman agents | {format_speed_label(self.speed_multiplier)}{freeze_suffix}"
 
     def get_agent_by_id(self, agent_id: str | None) -> dict | None:
         if agent_id is None:

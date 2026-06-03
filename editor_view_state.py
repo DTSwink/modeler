@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-
-def clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
+from sim_geometry import clamp
 
 
 def normalize_saved_view(layout: dict) -> None:

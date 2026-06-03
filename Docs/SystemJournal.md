@@ -26,6 +26,8 @@ Build the system off Unreal first.
 
 Unreal is a final host/integration target, not the foundation. The sim should not depend on Unreal types such as `AActor`, `UObject`, `FVector`, `FName`, `TArray`, reflection macros, Actor ticking, or editor-only buttons. When Unreal integration eventually starts, the adapter should translate between Unreal objects and the pure core data model.
 
+The gameplay core should also stay renderless. Rendering, visualization, debug drawing, and editor presentation are optional host/tooling layers, not part of the simulation rules themselves.
+
 Expected future shape:
 
 - `include/` and `src/`: pure core simulation and layout logic.
@@ -52,6 +54,7 @@ This is not optional. It is a hard architecture rule for all future blocks.
 What that means in practice:
 
 - Keep layout authoring, runtime simulation, validation, rendering, and future AI logic as separate layers with clear data handoffs.
+- Treat rendering as an outer layer. The game logic should be able to run headless with no dependency on visual output.
 - Prefer small focused functions and data transforms over giant mixed control paths.
 - Do not bury core simulation rules inside UI event handlers if they can live in reusable logic instead.
 - Do not make one system reach deep into another system's private state when a narrow interface or explicit data contract will do.
@@ -70,6 +73,8 @@ Important files:
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
+- `layout_document.py`: isolated authored-layout load/save/normalize helpers shared by the native editor.
+- `sim_geometry.py`: isolated headless geometry helpers shared by the editor and runtime.
 - `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
 - `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
@@ -197,6 +202,7 @@ The editor currently supports:
 - Button focus hardened so pressing the spacebar toggles simulation instead of retriggering the last clicked button during map work.
 - Explicit saves now persist the current camera zoom and pan, so refreshes and reopen cycles can return to the same authored view.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
+- Shared geometry and authored-layout normalization now also live in isolated headless helper modules instead of being owned by the Tk app.
 
 The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
@@ -204,7 +210,7 @@ The important UI rule is that whole-scene readability wins over showing every la
 
 The important interaction rule is that simulation and authoring are layered, not split into separate tools. Right now the Roman agent prototype lives directly on top of the editable map, spawns from the Roman camp, and can roam across the whole authored space while `Freeze Layout` acts as a temporary guardrail when the user wants to watch or drag agents without grabbing camp geometry.
 
-The important implementation rule is that even if the current native editor hosts several responsibilities in one app, each new system added to it should still be written as if it may be extracted, upgraded, or swapped later. Avoid tightly coupling saving, camera control, layout editing, agent stepping, and future gameplay rules into one indivisible block.
+The important implementation rule is that even if the current native editor hosts several responsibilities in one app, each new system added to it should still be written as if it may be extracted, upgraded, or swapped later. Avoid tightly coupling saving, camera control, layout editing, agent stepping, rendering, and future gameplay rules into one indivisible block.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 
