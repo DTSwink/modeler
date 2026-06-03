@@ -1436,7 +1436,7 @@ class LayoutEditorApp:
             outline=outline,
             width=outline_width,
         )
-        inner_radius = max(3.0, radius * 0.5)
+        inner_radius = self.location_inner_radius_pixels(point)
         if color:
             self.canvas.create_oval(
                 screen["x"] - inner_radius,
@@ -1459,6 +1459,11 @@ class LayoutEditorApp:
 
     def point_visual_radius_pixels(self, point: dict) -> float:
         return max(6.0, point["radius"] * self.view["scale"] * 0.12)
+
+    def location_inner_radius_pixels(self, point: dict) -> float:
+        outer_radius = self.point_visual_radius_pixels(point)
+        ring_thickness = clamp(outer_radius * 0.14, 2.0, 3.5)
+        return max(3.0, outer_radius - ring_thickness)
 
     def point_hit_radius_world(self, point: dict) -> float:
         return (self.point_visual_radius_pixels(point) + 8.0) / self.view["scale"]
