@@ -17,6 +17,8 @@ ZONE_TYPES = [
     "Walkable",
     "Blocked",
     "Camp",
+    "TentArea",
+    "TrainingArea",
     "Forest",
     "Ocean",
     "Lake",
@@ -50,7 +52,7 @@ FACTIONS = [
 
 
 def read_json(path: Path) -> dict:
-    with path.open("r", encoding="utf-8") as handle:
+    with path.open("r", encoding="utf-8-sig") as handle:
         return json.load(handle)
 
 
@@ -633,7 +635,7 @@ class LayoutEditorApp:
             self.selection_var.set("No item selected. Click a marker on the map or choose one in the list.")
         elif self.selected_kind == "zone":
             self.selection_var.set(
-                f"{selected['label']} selected. Drag the zone body to move it, or drag a corner handle to resize it. "
+                f"{selected['label']} selected. Drag the zone body to move it, or drag a corner handle to resize from that corner while the opposite corner stays put. "
                 f"Current size: {int(selected['size']['x'])} x {int(selected['size']['y'])}."
             )
         elif self.selected_kind == "point":
@@ -932,7 +934,7 @@ class LayoutEditorApp:
     def draw_point(self, point: dict) -> None:
         screen = self.world_to_canvas(point["position"])
         color = "#2f6dff" if point["faction"] == "Roman" else "#c84836" if point["faction"] == "Ottoman" else "#7a6b56"
-        radius = max(6, point["radius"] * self.view["scale"] * 0.12)
+        radius = self.point_visual_radius_pixels(point)
         label_font_size = max(8, int(self.layout["editor"]["labelFontSize"]) - 1)
         self.canvas.create_oval(screen["x"] - radius, screen["y"] - radius, screen["x"] + radius, screen["y"] + radius, fill=color, outline="white", width=2)
         facing_length = radius + max(16, point["radius"] * self.view["scale"] * 0.14)
@@ -948,17 +950,25 @@ class LayoutEditorApp:
         if self.layout["root"]["drawLabels"]:
             self.canvas.create_text(screen["x"] + 10, screen["y"] - 10, text=point["label"], anchor="sw", font=("Georgia", label_font_size), fill="#1f1a15")
 
-    def zone_corners(self, zone: dict) -> list[dict]:
+    def point_visual_radius_pixels(self, point: dict) -> float:
+        return max(6.0, point["radius"] * self.view["scale"] * 0.12)
+
+    def point_hit_radius_world(self, point: dict) -> float:
+        return (self.point_visual_radius_pixels(point) + 8.0) / self.view["scale"]
+
+    def zone_local_corners(self, zone: dict) -> list[dict]:
         half_x = zone["size"]["x"] * 0.5
         half_y = zone["size"]["y"] * 0.5
-        corners = [
+        return [
             {"x": -half_x, "y": -half_y},
             {"x": half_x, "y": -half_y},
             {"x": half_x, "y": half_y},
             {"x": -half_x, "y": half_y},
         ]
+
+    def zone_corners(self, zone: dict) -> list[dict]:
         result = []
-        for local in corners:
+        for local in self.zone_local_corners(zone):
             rotated = local_to_world(local, zone["yawRadians"])
             result.append({
                 "x": zone["center"]["x"] + rotated["x"],
@@ -1011,9 +1021,9 @@ class LayoutEditorApp:
             return None
         handle_radius = 14 / self.view["scale"]
         if self.selected_kind == "zone":
-            for corner in self.zone_corners(selected):
+            for corner_index, corner in enumerate(self.zone_corners(selected)):
                 if distance(world_point, corner) <= handle_radius:
-                    return {"kind": "zone-handle", "id": selected["id"]}
+                    return {"kind": "zone-handle", "id": selected["id"], "cornerIndex": corner_index}
         elif self.selected_kind == "point":
             if distance(world_point, self.point_radius_handle(selected)) <= handle_radius:
                 return {"kind": "point-radius", "id": selected["id"]}
@@ -1032,7 +1042,7 @@ class LayoutEditorApp:
             return handle_hit
 
         for point in reversed(self.layout["points"]):
-            if distance(world_point, point["position"]) <= max(point["radius"], 120):
+            if distance(world_point, point["position"]) <= self.point_hit_radius_world(point):
                 return {"kind": "point", "id": point["id"]}
 
         for wall in reversed(self.layout["walls"]):
@@ -1080,7 +1090,14 @@ class LayoutEditorApp:
                 },
             }
         elif hit["kind"] == "zone-handle":
-            self.drag_state = {"type": "resize-zone", "beforeState": before_state}
+            corners = self.zone_corners(item)
+            opposite_corner = corners[(hit["cornerIndex"] + 2) % 4]
+            self.drag_state = {
+                "type": "resize-zone",
+                "beforeState": before_state,
+                "cornerIndex": hit["cornerIndex"],
+                "oppositeCornerWorld": deep_copy(opposite_corner),
+            }
         elif hit["kind"] == "point":
             self.drag_state = {
                 "type": "move-point",
@@ -1126,6 +1143,11 @@ class LayoutEditorApp:
                 "y": world_point["y"] - self.drag_state["offset"]["y"],
             })
         elif drag_type == "resize-zone":
+            opposite_corner = self.drag_state["oppositeCornerWorld"]
+            item["center"] = {
+                "x": (world_point["x"] + opposite_corner["x"]) * 0.5,
+                "y": (world_point["y"] + opposite_corner["y"]) * 0.5,
+            }
             local = world_to_local(world_point, item["center"], item["yawRadians"])
             item["size"]["x"] = max(300.0, abs(local["x"]) * 2.0)
             item["size"]["y"] = max(300.0, abs(local["y"]) * 2.0)

@@ -37,6 +37,8 @@ Expected future shape:
 
 The player is never a special simulation entity. Later, player control should be represented by assigning an ordinary agent a `PlayerInput` brain. The agent keeps its normal faction, role, position, state, and capabilities.
 
+The layout editor is also part of that core direction. Treat the saved layout JSON as authored simulation input, not disposable mockup data. Future validation, baking, placement logic, and early runtime systems should read from this authored layout instead of inventing a separate temporary map source.
+
 ## Project Shape
 
 Important files:
@@ -76,6 +78,8 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 - `Walkable`
 - `Blocked`
 - `Camp`
+- `TentArea`
+- `TrainingArea`
 - `Forest`
 - `Ocean`
 - `Lake`
@@ -139,7 +143,7 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 The editor currently supports:
 
 - Direct dragging of zones, points, and whole walls.
-- Zone resize handles.
+- Zone resize handles with opposite-corner anchoring.
 - Point radius and facing handles.
 - Wall endpoint handles.
 - Exact numeric edits through the inspector.
@@ -149,6 +153,10 @@ The editor currently supports:
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
 - Explicit save into `data/current_layout.json`.
+- Camp sub-areas for tents, infirmaries, and training grounds.
+- Background grass implied by absence of a specific zone, so the old grass hallway authoring zone has been removed.
+
+The important modeling rule here is that the viewer is now carrying simulation intent. If a camp gets an infirmary, tent footprint, or training area in the editor, that detail should be assumed available to future baking and runtime systems.
 
 ## Desktop Access
 
@@ -168,18 +176,22 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 
 1. Open `ModelerLayoutEditor.pyw`.
 2. Drag a zone, a point, and a wall endpoint.
-3. Confirm `Ctrl+Z` reverses the last layout change.
-4. Confirm mouse-wheel zoom and right-drag panning work.
-5. Change `Label Text Size` and confirm the label rendering updates.
-6. Click `Save Layout` or press `Ctrl+S`.
-7. Confirm those edits appear in `data/current_layout.json`.
-8. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
-9. Open `RunBlock0ASmoke.exe`.
-10. The script initializes the Visual Studio C++ toolchain.
-11. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-12. It runs the produced smoke test.
-13. The smoke test creates one zone, one point, and one wall.
-14. It asserts the summary counts and prints the Block 0A validation message.
+3. Confirm point clicks are tight to the visible marker, especially for enlarged watchtowers.
+4. Confirm dragging one zone corner keeps the opposite corner fixed instead of resizing symmetrically.
+5. Confirm `Ctrl+Z` reverses the last layout change.
+6. Confirm mouse-wheel zoom and right-drag panning work.
+7. Change `Label Text Size` and confirm the label rendering updates.
+8. Confirm tent, infirmary, and training sub-areas exist inside each camp.
+9. Confirm the old grass hallway zone is absent.
+10. Click `Save Layout` or press `Ctrl+S`.
+11. Confirm those edits appear in `data/current_layout.json`.
+12. Close and reopen the editor without saving a fresh edit, and confirm unsaved session changes are not reloaded.
+13. Open `RunBlock0ASmoke.exe`.
+14. The script initializes the Visual Studio C++ toolchain.
+15. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+16. It runs the produced smoke test.
+17. The smoke test creates one zone, one point, and one wall.
+18. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 

@@ -17,6 +17,8 @@ enum class ZoneType : std::uint8_t
 	Walkable,
 	Blocked,
 	Camp,
+	TentArea,
+	TrainingArea,
 	Forest,
 	Ocean,
 	Lake,
