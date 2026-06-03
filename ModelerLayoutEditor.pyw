@@ -36,6 +36,11 @@ SMALL_ZONE_TYPES = {
     "TrainingArea",
     "Infirmary",
 }
+LABEL_LINE_TAG = "label_line"
+LABEL_BG_TAG = "label_bg"
+LABEL_TEXT_TAG = "label_text"
+HANDLE_TAG = "selection_handle"
+FRAME_TAG = "world_frame"
 
 ZONE_TYPES = [
     "Walkable",
@@ -1013,7 +1018,15 @@ class LayoutEditorApp:
         register: bool = True,
         allow_overlap: bool = True,
     ) -> tuple[float, float, float, float] | None:
-        text_id = self.canvas.create_text(x, y, text=text, anchor=anchor, font=font, fill=text_fill)
+        text_id = self.canvas.create_text(
+            x,
+            y,
+            text=text,
+            anchor=anchor,
+            font=font,
+            fill=text_fill,
+            tags=(LABEL_TEXT_TAG,),
+        )
         raw_bbox = self.canvas.bbox(text_id)
         if raw_bbox is None:
             self.canvas.delete(text_id)
@@ -1022,11 +1035,27 @@ class LayoutEditorApp:
         if (not allow_overlap) and (self.label_conflicts(bbox) or not self.bbox_inside_canvas(bbox)):
             self.canvas.delete(text_id)
             return None
-        rect_id = self.canvas.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], fill=background_fill, outline=outline, width=1)
+        rect_id = self.canvas.create_rectangle(
+            bbox[0],
+            bbox[1],
+            bbox[2],
+            bbox[3],
+            fill=background_fill,
+            outline=outline,
+            width=1,
+            tags=(LABEL_BG_TAG,),
+        )
         self.canvas.tag_raise(text_id, rect_id)
         if register:
             self.register_label_box(bbox)
         return bbox
+
+    def raise_overlay_layers(self) -> None:
+        self.canvas.tag_raise(FRAME_TAG)
+        self.canvas.tag_raise(HANDLE_TAG)
+        self.canvas.tag_raise(LABEL_LINE_TAG)
+        self.canvas.tag_raise(LABEL_BG_TAG)
+        self.canvas.tag_raise(LABEL_TEXT_TAG)
 
     def zone_screen_bounds(self, zone: dict) -> tuple[float, float, float, float]:
         corners = [self.world_to_canvas(corner) for corner in self.zone_corners(zone)]
@@ -1112,7 +1141,15 @@ class LayoutEditorApp:
                     continue
                 line_end = self.closest_point_on_bbox(screen["x"], screen["y"], bbox)
                 if distance({"x": screen["x"], "y": screen["y"]}, {"x": line_end[0], "y": line_end[1]}) > radius + 10:
-                    self.canvas.create_line(screen["x"], screen["y"], line_end[0], line_end[1], fill=badge_outline, width=1)
+                    self.canvas.create_line(
+                        screen["x"],
+                        screen["y"],
+                        line_end[0],
+                        line_end[1],
+                        fill=badge_outline,
+                        width=1,
+                        tags=(LABEL_LINE_TAG,),
+                    )
                 break
 
     def render_canvas(self) -> None:
@@ -1152,7 +1189,16 @@ class LayoutEditorApp:
 
         top_left = self.world_to_canvas({"x": 0, "y": 0})
         bottom_right = self.world_to_canvas({"x": view["worldWidth"], "y": view["worldHeight"]})
-        self.canvas.create_rectangle(top_left["x"], top_left["y"], bottom_right["x"], bottom_right["y"], outline="#8a7d6a", width=2)
+        self.canvas.create_rectangle(
+            top_left["x"],
+            top_left["y"],
+            bottom_right["x"],
+            bottom_right["y"],
+            outline="#8a7d6a",
+            width=2,
+            tags=(FRAME_TAG,),
+        )
+        self.raise_overlay_layers()
 
     def compute_view(self, width: int, height: int) -> dict:
         world_width, world_height = self.world_dimensions()
@@ -1324,15 +1370,42 @@ class LayoutEditorApp:
         if self.selected_kind == "zone":
             for corner in self.zone_corners(item):
                 screen = self.world_to_canvas(corner)
-                self.canvas.create_rectangle(screen["x"] - 6, screen["y"] - 6, screen["x"] + 6, screen["y"] + 6, fill="white", outline="#294fb6", width=2)
+                self.canvas.create_rectangle(
+                    screen["x"] - 6,
+                    screen["y"] - 6,
+                    screen["x"] + 6,
+                    screen["y"] + 6,
+                    fill="white",
+                    outline="#294fb6",
+                    width=2,
+                    tags=(HANDLE_TAG,),
+                )
         elif self.selected_kind == "point":
             for handle in (self.point_radius_handle(item), self.point_facing_handle(item)):
                 screen = self.world_to_canvas(handle)
-                self.canvas.create_oval(screen["x"] - 6, screen["y"] - 6, screen["x"] + 6, screen["y"] + 6, fill="white", outline="#294fb6", width=2)
+                self.canvas.create_oval(
+                    screen["x"] - 6,
+                    screen["y"] - 6,
+                    screen["x"] + 6,
+                    screen["y"] + 6,
+                    fill="white",
+                    outline="#294fb6",
+                    width=2,
+                    tags=(HANDLE_TAG,),
+                )
         else:
             for endpoint in (item["a"], item["b"]):
                 screen = self.world_to_canvas(endpoint)
-                self.canvas.create_oval(screen["x"] - 6, screen["y"] - 6, screen["x"] + 6, screen["y"] + 6, fill="white", outline="#294fb6", width=2)
+                self.canvas.create_oval(
+                    screen["x"] - 6,
+                    screen["y"] - 6,
+                    screen["x"] + 6,
+                    screen["y"] + 6,
+                    fill="white",
+                    outline="#294fb6",
+                    width=2,
+                    tags=(HANDLE_TAG,),
+                )
 
     def snap(self, value: float) -> float:
         if not self.layout["editor"]["snapToGrid"]:

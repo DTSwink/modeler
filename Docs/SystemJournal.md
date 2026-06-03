@@ -154,6 +154,7 @@ The editor currently supports:
 - Adjustable `Label Text Size` for on-map labels.
 - Adaptive label density so full-scene views show major geography first and dense local detail later.
 - Point labels rendered as decluttered callouts instead of raw overlapping text.
+- Label badges, label text, and label connector lines raised above geometry so dense camp details stay readable while editing.
 - A visible UI build stamp plus restart-needed title state when the editor code on disk is newer than the running window.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
