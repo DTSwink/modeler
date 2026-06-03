@@ -6,9 +6,13 @@ This repo should not contain an Unreal project during the core-building phase. T
 
 ## Start
 
-Double-click `StartModeler.bat` to open the local start page.
+Open `START_HERE.html` for the rendered local launch page.
 
-Double-click `BuildAndTestCore.bat` to compile and run the current pure C++ smoke test.
+Double-click `StartModeler.bat` to open that page from Windows.
+
+Open `RunBlock0ASmoke.exe` to launch the current pure C++ smoke test without typing commands.
+
+`BuildAndTestCore.bat` remains the underlying script if we need to inspect or change the build flow.
 
 For the ongoing architecture record, read `Docs/SystemJournal.md`.
 
@@ -28,6 +32,6 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 
 ## Test
 
-1. Double-click `BuildAndTestCore.bat`.
+1. Open `RunBlock0ASmoke.exe`.
 2. Confirm the console reports marker counts.
 3. Confirm it prints `Block 0A pure core smoke test passed.`

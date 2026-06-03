@@ -41,10 +41,13 @@ The player is never a special simulation entity. Later, player control should be
 
 Important files:
 
+- `START_HERE.html`: rendered local launch page.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
 - `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
 - `src/modeler/sim/LayoutMarkers.cpp`: Block 0A marker summary/validation stub.
 - `tests/block0a_smoke.cpp`: current smoke test.
+- `tools/launchers/RunBlock0ASmoke.cpp`: Windows launcher source for the smoke test wrapper.
+- `RunBlock0ASmoke.exe`: Windows wrapper that launches the smoke test script.
 - `BuildAndTestCore.bat`: double-click build/test launcher.
 - `StartModeler.bat`: opens the local start page.
 
@@ -120,9 +123,19 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 `formatBlock0AValidation` returns a human-readable Block 0A message with those counts. Real layout validation belongs to Block 0B.
 
+## Access Notes
+
+Codex desktop local file links preview text files in the app editor. That means direct links to `.bat`, `.cmd`, `.ps1`, `.md`, or source files open the file instead of executing it.
+
+Because of that:
+
+- The preferred clickable entry point is `START_HERE.html`.
+- The preferred runnable launcher is `RunBlock0ASmoke.exe`.
+- `BuildAndTestCore.bat` remains the underlying script, but it is not the preferred chat-link target.
+
 ## Current Test Workflow
 
-1. Double-click `BuildAndTestCore.bat`.
+1. Open `RunBlock0ASmoke.exe`.
 2. The script initializes the Visual Studio C++ toolchain.
 3. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
 4. It runs the produced smoke test.
@@ -131,7 +144,7 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 
 ## Verified
 
-The pure C++ Block 0A smoke test should pass locally through `BuildAndTestCore.bat`. Keep this verified after each core change.
+The pure C++ Block 0A smoke test should pass locally through `RunBlock0ASmoke.exe`. `BuildAndTestCore.bat` remains the underlying script. Keep this verified after each core change.
 
 ## Not Implemented Yet
 

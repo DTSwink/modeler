@@ -21,6 +21,7 @@ Saved/
 # Build artifacts
 *.target
 *.modules
+*.obj
 
 # OS noise
 Thumbs.db
