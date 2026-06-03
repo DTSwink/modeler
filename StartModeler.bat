@@ -1,10 +1,10 @@
 @echo off
-set "PROJECT=%~dp0Modeler.uproject"
+set "START=%~dp0START_HERE.md"
 
-if not exist "%PROJECT%" (
-	echo Could not find "%PROJECT%".
+if not exist "%START%" (
+	echo Could not find "%START%".
 	pause
 	exit /b 1
 )
 
-start "" "%PROJECT%"
+start "" "%START%"

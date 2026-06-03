@@ -1,35 +1,33 @@
 # Modeler
 
-Fresh Unreal Engine 5.7 C++ project for the Roman vs Ottoman 2D agent simulation.
+Engine-independent core for the Roman vs Ottoman 2D agent simulation.
+
+This repo should not contain an Unreal project during the core-building phase. The simulation, layout model, validation, and debug tooling are built outside Unreal first. Unreal integration happens later through a dedicated adapter/hook layer.
 
 ## Start
 
-Open `Modeler.uproject` to start the Unreal project.
+Double-click `StartModeler.bat` to open the local start page.
 
-On Windows, you can also double-click `StartModeler.bat`.
+Double-click `BuildAndTestCore.bat` to compile and run the current pure C++ smoke test.
 
 For the ongoing architecture record, read `Docs/SystemJournal.md`.
 
 ## Current Stop Point
 
-Block 0A is implemented:
+Block 0A has been corrected to be engine-independent:
 
-- `ASimLayoutRoot`
-- `ASimZoneMarker`
-- `ASimPointMarker`
-- `ASimWallMarker`
-- Shared simulation layout enums
-- Editor-callable `ValidateLayout` and `BakeLayout` stubs
-- Simple editor preview shapes for markers
+- Shared simulation layout enums.
+- Plain C++ layout marker structs.
+- Plain C++ layout draft container.
+- Block 0A validation-summary stub.
+- Smoke test for the pure core.
 
-Do not continue to Block 0B until marker placement has been tested and approved.
+There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
+
+Do not continue to Block 0B until the engine-independent direction is approved.
 
 ## Test
 
-1. Open `Modeler.uproject`.
-2. Create or open a level.
-3. Place one `SimLayoutRoot`.
-4. Place a few `SimZoneMarker`, `SimPointMarker`, and `SimWallMarker` actors.
-5. Adjust marker properties in Details.
-6. Click `ValidateLayout` on the root actor and confirm the Output Log reports marker counts.
-7. Click `BakeLayout` and confirm the Output Log reports the Block 0A stub message.
+1. Double-click `BuildAndTestCore.bat`.
+2. Confirm the console reports marker counts.
+3. Confirm it prints `Block 0A pure core smoke test passed.`

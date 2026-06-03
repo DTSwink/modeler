@@ -1,10 +1,10 @@
 #pragma once
 
-#include "CoreMinimal.h"
-#include "SimTypes.generated.h"
+#include <cstdint>
 
-UENUM(BlueprintType)
-enum class ESimFaction : uint8
+namespace modeler::sim
+{
+enum class Faction : std::uint8_t
 {
 	Neutral,
 	Roman,
@@ -12,8 +12,7 @@ enum class ESimFaction : uint8
 	Wildlife
 };
 
-UENUM(BlueprintType)
-enum class ESimZoneType : uint8
+enum class ZoneType : std::uint8_t
 {
 	Walkable,
 	Blocked,
@@ -27,8 +26,7 @@ enum class ESimZoneType : uint8
 	SpawnArea
 };
 
-UENUM(BlueprintType)
-enum class ESimPointType : uint8
+enum class PointType : std::uint8_t
 {
 	CommanderChair,
 	Fire,
@@ -43,3 +41,4 @@ enum class ESimPointType : uint8
 	PatrolPoint,
 	RallyPoint
 };
+}

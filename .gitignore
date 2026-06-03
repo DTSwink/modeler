@@ -1,4 +1,8 @@
-# Unreal generated files
+# Generated files
+Build/
+Out/
+
+# Unreal generated files, if a future adapter creates them
 Binaries/
 DerivedDataCache/
 Intermediate/

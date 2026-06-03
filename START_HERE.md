@@ -1,18 +1,26 @@
 # Start Here
 
-## Open The Project
+## Open The Local Entry Point
 
-Open `Modeler.uproject` from this folder to start the Unreal project.
+Double-click `StartModeler.bat` to open this page.
 
-On Windows, you can also double-click `StartModeler.bat`.
+## Run The Current Module
+
+Double-click `BuildAndTestCore.bat` to compile and run the current engine-independent smoke test.
 
 ## Current Work Gate
 
-The project is intentionally stopped at Block 0A. Test marker placement before any Block 0B work begins.
+The repo is intentionally stopped at Block 0A. The current task is to approve the engine-independent foundation before Block 0B begins.
 
 ## Main References
 
 - `README.md`: quick project status and test checklist.
 - `Docs/SystemJournal.md`: living journal of how the system works.
-- `Modeler.uproject`: Unreal Engine 5.7 project entry file.
-- `StartModeler.bat`: double-click launcher for the project.
+- `include/modeler/sim/`: public pure C++ sim headers.
+- `src/modeler/sim/`: pure C++ sim implementation.
+- `tests/block0a_smoke.cpp`: current smoke test.
+- `BuildAndTestCore.bat`: double-click build/test launcher.
+
+## Important Boundary
+
+There is no Unreal project here right now. Unreal is only a future integration target.

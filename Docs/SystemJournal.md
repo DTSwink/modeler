@@ -14,9 +14,24 @@ Update this journal after every implementation block or meaningful architecture 
 
 ## Current Stop Point
 
-Block 0A is implemented and must be tested before Block 0B begins.
+Block 0A has been corrected and is awaiting approval.
 
-Block 0A means the project only contains editable layout marker actors and shared marker enums. It does not yet contain baked layout data, runtime simulation, debug visualization, agents, possession, input, movement, or root-motion prediction.
+The project is now engine-independent. The core sim, layout model, validation, debug tools, and future behavior systems should be built outside Unreal first. Unreal should only receive a later adapter/hook layer after the core behavior is useful and stable.
+
+There is intentionally no `.uproject`, Unreal module, Unreal actor class, Unreal build target, or Unreal-generated runtime code in the tracked project.
+
+## Non-Negotiable Direction
+
+Build the system off Unreal first.
+
+Unreal is a final host/integration target, not the foundation. The sim should not depend on Unreal types such as `AActor`, `UObject`, `FVector`, `FName`, `TArray`, reflection macros, Actor ticking, or editor-only buttons. When Unreal integration eventually starts, the adapter should translate between Unreal objects and the pure core data model.
+
+Expected future shape:
+
+- `include/` and `src/`: pure core simulation and layout logic.
+- `tests/`: pure core tests and smoke tests.
+- `tools/`: standalone editors, visualizers, or debugging tools if needed.
+- `adapters/unreal/`: future bridge layer, added only when the core is ready to hook into Unreal.
 
 ## Core Principle
 
@@ -24,27 +39,27 @@ The player is never a special simulation entity. Later, player control should be
 
 ## Project Shape
 
-The project is a fresh Unreal Engine 5.7 C++ project named `Modeler`.
-
 Important files:
 
-- `Modeler.uproject`: Unreal project entry point.
-- `Source/Modeler/Modeler.Build.cs`: runtime module rules.
-- `Source/Modeler/Sim/SimTypes.h`: shared layout enums.
-- `Source/Modeler/Sim/EditorMarkers/`: Block 0A marker actors.
+- `include/modeler/sim/SimTypes.h`: shared layout enums.
+- `include/modeler/sim/LayoutMarkers.h`: engine-independent marker data.
+- `src/modeler/sim/LayoutMarkers.cpp`: Block 0A marker summary/validation stub.
+- `tests/block0a_smoke.cpp`: current smoke test.
+- `BuildAndTestCore.bat`: double-click build/test launcher.
+- `StartModeler.bat`: opens the local start page.
 
-Generated folders such as `Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` are ignored by git.
+Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` are ignored by git.
 
 ## Block 0A Components
 
-`ESimFaction` identifies semantic ownership:
+`Faction` identifies semantic ownership:
 
 - `Neutral`
 - `Roman`
 - `Ottoman`
 - `Wildlife`
 
-`ESimZoneType` identifies rectangular area semantics:
+`ZoneType` identifies rectangular area semantics:
 
 - `Walkable`
 - `Blocked`
@@ -57,7 +72,7 @@ Generated folders such as `Binaries`, `Intermediate`, `Saved`, and `DerivedDataC
 - `WatchTowerVision`
 - `SpawnArea`
 
-`ESimPointType` identifies semantic point markers:
+`PointType` identifies semantic point markers:
 
 - `CommanderChair`
 - `Fire`
@@ -72,52 +87,54 @@ Generated folders such as `Binaries`, `Intermediate`, `Saved`, and `DerivedDataC
 - `PatrolPoint`
 - `RallyPoint`
 
-## Marker Actors
+## Pure Marker Data
 
-`ASimLayoutRoot`
+`LayoutRootSettings`
 
-- Place one per map.
-- Owns global layout settings such as `CellSize`, `GridSize`, `WorldOrigin`, and debug toggles.
-- Has editor-callable `ValidateLayout` and `BakeLayout` buttons.
-- In Block 0A, `ValidateLayout` only counts marker actors and prints a summary.
-- In Block 0A, `BakeLayout` only prints a stub message.
+- Holds global layout settings: `cellSize`, `gridSize`, `worldOrigin`, and debug toggles.
+- Replaces the old Unreal root actor idea for now.
 
-`ASimZoneMarker`
+`ZoneMarker`
 
-- Represents editable rectangular zones.
-- Key properties: `ZoneType`, `Faction`, `ZoneId`, `Size2D`, `Priority`.
-- Uses a non-colliding `UBoxComponent` preview.
-- Preview color changes by zone type.
+- Represents editable rectangular zones in pure data.
+- Key fields: `type`, `faction`, `id`, `center`, `size`, `yawRadians`, `priority`.
 
-`ASimPointMarker`
+`PointMarker`
 
 - Represents semantic points such as fire, basin, gate, chair, watchtower, and spawn point.
-- Key properties: `PointType`, `Faction`, `PointId`, `Radius`, `SlotCount`.
-- Uses a non-colliding `USphereComponent` preview and a facing arrow.
-- Preview color changes by point type.
+- Key fields: `type`, `faction`, `id`, `position`, `facingRadians`, `radius`, `slotCount`.
 
-`ASimWallMarker`
+`WallMarker`
 
-- Represents a thick 2D wall segment.
-- Key properties: `LocalStart`, `LocalEnd`, `Thickness`, `Faction`.
-- Uses a non-colliding `UBoxComponent` preview aligned between start and end.
+- Represents a thick 2D wall segment in pure data.
+- Key fields: `localStart`, `localEnd`, `thickness`, `faction`.
 
-## Editor Workflow For Current Block
+`LayoutDraft`
 
-1. Open `Modeler.uproject`.
-2. Create or open a level.
-3. Place one `SimLayoutRoot`.
-4. Place zones, points, and walls.
-5. Edit marker properties in Details.
-6. Select the root actor and run `ValidateLayout`.
-7. Confirm the Output Log reports marker counts.
-8. Run `BakeLayout`.
-9. Confirm the Output Log reports the Block 0A bake stub.
+- Holds root settings plus arrays of zones, points, and walls.
+- This is the current draft-level data container. Block 0B should turn this into validated/baked runtime layout data.
+
+## Current Validation Stub
+
+`summarizeLayout` counts zones, points, and walls.
+
+`formatBlock0AValidation` returns a human-readable Block 0A message with those counts. Real layout validation belongs to Block 0B.
+
+## Current Test Workflow
+
+1. Double-click `BuildAndTestCore.bat`.
+2. The script initializes the Visual Studio C++ toolchain.
+3. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+4. It runs the produced smoke test.
+5. The smoke test creates one zone, one point, and one wall.
+6. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
-The `ModelerEditor Win64 Development` target built successfully with Unreal Engine 5.7.
+The pure C++ Block 0A smoke test should pass locally through `BuildAndTestCore.bat`. Keep this verified after each core change.
 
 ## Not Implemented Yet
 
-Block 0B must add baked runtime layout data and real validation. Do not add runtime AI, agents, pathfinding, combat, needs, perception, orders, final graphics, or animation logic before their planned blocks.
+Block 0B must add real validation and baked runtime layout data, still without Unreal dependencies.
+
+Do not add runtime AI, agents, pathfinding, combat, needs, perception, orders, final graphics, animation logic, or Unreal integration before their planned blocks.
