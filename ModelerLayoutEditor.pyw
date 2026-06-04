@@ -14,6 +14,7 @@ import agent_panel
 import agent_state
 import agent_brains
 import editor_runtime
+import living_body
 import sim_resources
 from editor_runtime import RomanSimulationRuntime
 from editor_view_state import read_saved_view, write_saved_view
@@ -75,6 +76,7 @@ DYNAMIC_RELOAD_MODULES = [
     agent_panel,
     agent_brains,
     editor_runtime,
+    living_body,
     sim_resources,
 ]
 OMNIDIRECTIONAL_POINT_TYPES = {
@@ -806,8 +808,10 @@ class LayoutEditorApp:
         screen = self.world_to_canvas(agent["position"])
         radius = self.agent_visual_radius_pixels(agent)
         is_dead = agent.get("health", {}).get("status") == "dead"
-        fill = "#8f8a82" if is_dead else blend_hex(faction_color(agent["faction"]), "#f7f4ee", 0.18)
-        outline = "#e3bf47" if self.selected_kind == "agent" and self.selected_id == agent["id"] else "#1f1a15"
+        fill = "#4a4640" if is_dead else blend_hex(faction_color(agent["faction"]), "#f7f4ee", 0.18)
+        core_fill = "#2d2a26" if is_dead else "#f8f6f1"
+        facing_fill = "#5d574f" if is_dead else "#1f1a15"
+        outline = "#8a7442" if is_dead and self.selected_kind == "agent" and self.selected_id == agent["id"] else "#e3bf47" if self.selected_kind == "agent" and self.selected_id == agent["id"] else "#1f1a15"
         outline_width = 3 if self.selected_kind == "agent" and self.selected_id == agent["id"] else 2
         facing_length = radius + 8.0
         self.canvas.create_line(
@@ -815,7 +819,7 @@ class LayoutEditorApp:
             screen["y"],
             screen["x"] + math.cos(agent["headingRadians"]) * facing_length,
             screen["y"] + math.sin(agent["headingRadians"]) * facing_length,
-            fill=outline,
+            fill=facing_fill if is_dead else outline,
             width=2,
         )
         self.canvas.create_oval(
@@ -833,7 +837,7 @@ class LayoutEditorApp:
             screen["y"] - core_radius,
             screen["x"] + core_radius,
             screen["y"] + core_radius,
-            fill="#f8f6f1",
+            fill=core_fill,
             outline="",
         )
         self.draw_agent_inventory_marker(agent, screen, radius)
@@ -1128,9 +1132,10 @@ class LayoutEditorApp:
         show_error_dialog: bool = True,
         raise_errors: bool = False,
     ) -> str | None:
-        global agent_state, agent_panel, agent_brains, editor_runtime, sim_resources, RomanSimulationRuntime, DYNAMIC_RELOAD_MODULES
+        global agent_state, agent_panel, agent_brains, editor_runtime, living_body, sim_resources, RomanSimulationRuntime, DYNAMIC_RELOAD_MODULES
         try:
             importlib.invalidate_caches()
+            living_body = importlib.reload(living_body)
             agent_state = importlib.reload(agent_state)
             agent_panel = importlib.reload(agent_panel)
             agent_brains = importlib.reload(agent_brains)
@@ -1142,6 +1147,7 @@ class LayoutEditorApp:
                 agent_panel,
                 agent_brains,
                 editor_runtime,
+                living_body,
                 sim_resources,
             ]
             self.rebuild_dynamic_widgets()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import random
 
+import living_body
 import sim_resources
 from sim_geometry import clamp, distance
 
@@ -147,6 +148,7 @@ def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Rand
         "fireId": fire["id"],
         "attack": {
             "target": sim_resources.attack_target_ref(target),
+            "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
             "reacquire": {"kind": "pig", "forest": "north"},
             "reason": "hunt pig for fire",
             "onDefeat": "carry_raw_pig",
@@ -287,6 +289,8 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
     if job.get("phase") == "attack_target":
         attack = job.get("attack", {})
         target_ref = attack.get("target")
+        target_limb = living_body.normalize_limb(attack.get("targetLimb"))
+        attack["targetLimb"] = target_limb
         target = sim_resources.attack_target_by_ref(layout, resources, target_ref)
         if target is None:
             target = sim_resources.nearest_attack_target(layout, resources, agent["position"], attack.get("reacquire", {}))
@@ -294,7 +298,10 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
                 finish_job(agent, "no attack target available")
                 return False
             target_ref = sim_resources.attack_target_ref(target)
+            target_ref["targetLimb"] = target_limb
             attack["target"] = target_ref
+        elif isinstance(target_ref, dict):
+            target_ref["targetLimb"] = target_limb
         attack_radius = agent["radius"] + float(target.get("radius", target_ref.get("radius", 75.0))) + ARRIVAL_EXTRA_MARGIN
         if not at_position(agent, target["position"], attack_radius):
             agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": attack.get("reason", "attack target")}
@@ -302,7 +309,7 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
         defeated = sim_resources.defeat_attack_target(layout, resources, target_ref, rng)
         if defeated is not None and attack.get("onDefeat") == "carry_raw_pig":
             agent["inventory"]["rawPig"] = True
-            emit_interaction(context, agent, "attack_target", defeated, defeated.get("kind", "target"))
+            emit_interaction(context, agent, "attack_target", defeated, defeated.get("kind", "target"), target_limb=target_limb)
         job["phase"] = "to_fire"
         return True
 
@@ -334,14 +341,24 @@ def normalize_attack_job(job: dict) -> None:
             "id": job.get("pigId"),
             "label": job.get("pigId") or "Pig",
             "radius": 75.0,
+            "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
         },
+        "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
         "reacquire": {"kind": "pig", "forest": "north"},
         "reason": "hunt pig for fire",
         "onDefeat": "carry_raw_pig",
     }
 
 
-def emit_interaction(context: dict, agent: dict, kind: str, target: dict, target_kind: str) -> None:
+def emit_interaction(
+    context: dict,
+    agent: dict,
+    kind: str,
+    target: dict,
+    target_kind: str,
+    *,
+    target_limb: str | None = None,
+) -> None:
     callback = context.get("emit_interaction")
     if callback is None:
         return
@@ -352,6 +369,7 @@ def emit_interaction(context: dict, agent: dict, kind: str, target: dict, target
         target_label=target.get("label", target_kind),
         position=position,
         target_kind=target_kind,
+        target_limb=target_limb,
     )
 
 

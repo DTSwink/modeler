@@ -4,6 +4,7 @@ import math
 import random
 from copy import deepcopy
 
+import living_body
 from sim_geometry import clamp, distance, local_to_world, world_to_local
 
 
@@ -303,6 +304,11 @@ def spawn_pig(layout: dict, state: dict, rng: random.Random, forest: dict, far_f
         "forestId": forest["id"],
         "position": best,
         "radius": 75.0,
+        "health": {
+            "status": "alive",
+            "wounds": [],
+        },
+        "body": living_body.build_default_body_state(),
         "headingRadians": rng.uniform(0.0, math.tau),
         "targetHeadingRadians": rng.uniform(0.0, math.tau),
         "moveSpeed": rng.uniform(PIG_MOVE_SPEED_MIN, PIG_MOVE_SPEED_MAX),
@@ -313,6 +319,11 @@ def spawn_pig(layout: dict, state: dict, rng: random.Random, forest: dict, far_f
 def normalize_pig_state(pig: dict, rng: random.Random) -> None:
     pig.setdefault("kind", "pig")
     pig.setdefault("radius", 75.0)
+    health = pig.get("health") if isinstance(pig.get("health"), dict) else {}
+    health.setdefault("status", "alive")
+    health.setdefault("wounds", [])
+    pig["health"] = health
+    living_body.normalize_body_state(pig)
     pig.setdefault("headingRadians", rng.uniform(0.0, math.tau))
     pig.setdefault("targetHeadingRadians", pig["headingRadians"])
     pig.setdefault("moveSpeed", rng.uniform(PIG_MOVE_SPEED_MIN, PIG_MOVE_SPEED_MAX))
@@ -405,19 +416,30 @@ def attack_target_ref(target: dict) -> dict:
         "id": target["id"],
         "label": target.get("label", target["id"]),
         "radius": float(target.get("radius", 75.0)),
+        "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
     }
 
 
 def defeat_attack_target(layout: dict, state: dict, target_ref: dict, rng: random.Random) -> dict | None:
     if target_ref.get("kind") == "pig":
-        return kill_and_respawn_pig(layout, state, target_ref.get("id"), rng)
+        target_limb = living_body.normalize_limb(target_ref.get("targetLimb"))
+        return kill_and_respawn_pig(layout, state, target_ref.get("id"), rng, target_limb=target_limb)
     return None
 
 
-def kill_and_respawn_pig(layout: dict, state: dict, pig_id: str, rng: random.Random) -> dict | None:
+def kill_and_respawn_pig(
+    layout: dict,
+    state: dict,
+    pig_id: str,
+    rng: random.Random,
+    *,
+    target_limb: str = living_body.DEFAULT_ATTACK_LIMB,
+) -> dict | None:
     for index, pig in enumerate(state.get("pigs", [])):
         if pig["id"] != pig_id:
             continue
+        living_body.record_wound(pig, limb=target_limb, severity="fatal", source="attack")
+        pig["health"]["status"] = "dead"
         killed_position = deepcopy(pig["position"])
         forest = next((zone for zone in layout["zones"] if zone["id"] == pig["forestId"]), None)
         state["pigs"].pop(index)

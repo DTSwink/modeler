@@ -84,6 +84,7 @@ Important files:
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
 - `layout_document.py`: isolated authored-layout load/save/normalize helpers, including non-destructive save merging, shared by the native editor.
+- `living_body.py`: isolated headless limb/body helpers shared by agents and future living targets.
 - `sim_resources.py`: isolated runtime resource state for basins, fire slots, jar jobs, and forest pig populations.
 - `sim_geometry.py`: isolated headless geometry helpers shared by the editor and runtime.
 - `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
@@ -220,6 +221,7 @@ The editor currently supports:
 - Agent panel rows do not use visible `Attribute` / `Value` headers. The space is reserved for useful data, with identity details placed at the end of the list.
 - The old footer selection text is hidden while an agent is selected so it does not compete with the agent attribute panel.
 - Roman agents now carry modular headless `needs` and `health` state, starting with `hunger`, `thirst`, and `status`.
+- Living beings now carry a shared limb/body model: head, torso, left arm, right arm, left leg, and right leg. Wounds are recorded against limbs, with torso as the default attack target until targeting logic gets smarter.
 - Roman agents now carry modular `brain`, `intent`, `job`, and `inventory` state so resource decisions are inspectable instead of hidden inside movement code.
 - Basins have runtime capacity, drawn as blue fill inside the basin marker. Drinking visibly depletes the fill.
 - Fires have runtime pig slots. Slots are empty, raw, or cooked; raw pigs cook for 30 seconds, cooked pig slots can be eaten, and food amount visibly shrinks from right to left.
@@ -229,6 +231,8 @@ The editor currently supports:
 - North and south forests maintain constant moving pig populations. Current Roman food jobs hunt in the north forest, and killed pigs respawn far from the kill position.
 - Agent interactions emit small runtime events. The editor visualizes those events as short pulses for drinking, eating, jar handling, basin filling, attacking a target, and placing raw pig on the fire.
 - Pig hunting now uses a generic attack-target phase in `agent_brains.py` with target lookup/defeat helpers in `sim_resources.py`. Pigs are the first target kind, but the shape is meant to support intruder hunting later without rewriting the chase/attack loop.
+- Attack events carry `targetLimb`; current attacks default to torso for every target.
+- Dead agents render with a somber dark body/core color so death is visually obvious in the scene.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 

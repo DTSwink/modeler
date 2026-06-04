@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 
+import living_body
 from sim_geometry import clamp
 
 
@@ -21,7 +22,9 @@ def build_default_agent_state() -> dict:
         },
         "health": {
             "status": AGENT_STATUS_VALUES[0],
+            "wounds": [],
         },
+        "body": living_body.build_default_body_state(),
         "brain": "NeedsWorker",
         "intent": {
             "action": "wander",
@@ -49,9 +52,15 @@ def normalize_agent_state(agent: dict) -> None:
     if status not in AGENT_STATUS_VALUES:
         status = AGENT_STATUS_VALUES[0]
     health["status"] = status
+    health["wounds"] = [
+        living_body.normalize_wound(wound)
+        for wound in health.get("wounds", [])
+        if isinstance(wound, dict)
+    ] if isinstance(health.get("wounds"), list) else []
 
     agent["needs"] = needs
     agent["health"] = health
+    living_body.normalize_body_state(agent)
     agent.setdefault("brain", "NeedsWorker")
     agent.setdefault("intent", {"action": "wander", "reason": "initializing"})
     agent.setdefault("job", None)
@@ -69,6 +78,15 @@ def agent_snapshot_sections(agent: dict) -> list[dict]:
             "title": "Health",
             "rows": [
                 {"label": "Status", "value": agent["health"]["status"].title()},
+                {"label": "Last Wound", "value": _format_last_wound(agent)},
+                {"label": "Wounds", "value": len(agent["health"].get("wounds", []))},
+            ],
+        },
+        {
+            "title": "Body",
+            "rows": [
+                {"label": living_body.limb_label(limb), "value": _format_limb_state(agent, limb)}
+                for limb in living_body.LIMB_TYPES
             ],
         },
         {
@@ -146,9 +164,11 @@ def _format_job(job) -> str:
         return "None"
     job_type = str(job.get("type", "unknown"))
     phase = job.get("phase")
+    target_limb = _job_target_limb(job)
+    suffix = f" -> {living_body.limb_label(target_limb)}" if target_limb else ""
     if phase:
-        return f"{job_type} / {phase}"
-    return job_type
+        return f"{job_type} / {phase}{suffix}"
+    return f"{job_type}{suffix}"
 
 
 def _format_inventory(inventory) -> str:
@@ -162,3 +182,25 @@ def _format_inventory(inventory) -> str:
     if inventory.get("rawPig"):
         carried.append("raw pig")
     return ", ".join(carried) if carried else "Empty"
+
+
+def _format_last_wound(agent: dict) -> str:
+    wound = agent.get("body", {}).get("lastWound")
+    if not isinstance(wound, dict):
+        return "None"
+    return f"{wound['severity']} / {wound['label']}"
+
+
+def _format_limb_state(agent: dict, limb: str) -> str:
+    limb_state = agent.get("body", {}).get("limbs", {}).get(limb, {})
+    wounds = limb_state.get("wounds", [])
+    if not wounds:
+        return "Clear"
+    return f"{len(wounds)} wound" if len(wounds) == 1 else f"{len(wounds)} wounds"
+
+
+def _job_target_limb(job: dict) -> str | None:
+    attack = job.get("attack")
+    if not isinstance(attack, dict):
+        return None
+    return living_body.normalize_limb(attack.get("targetLimb"))

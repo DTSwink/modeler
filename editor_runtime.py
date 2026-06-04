@@ -114,20 +114,22 @@ class RomanSimulationRuntime:
         target_label: str,
         position: dict,
         target_kind: str = "resource",
+        target_limb: str | None = None,
     ) -> None:
-        self._interaction_events.append(
-            {
-                "id": self._next_interaction_id,
-                "simTime": self.time_seconds,
-                "agentId": agent["id"],
-                "agentLabel": agent["label"],
-                "kind": kind,
-                "target": target_label,
-                "targetKind": target_kind,
-                "position": deepcopy(position),
-                "agentPosition": deepcopy(agent["position"]),
-            }
-        )
+        event = {
+            "id": self._next_interaction_id,
+            "simTime": self.time_seconds,
+            "agentId": agent["id"],
+            "agentLabel": agent["label"],
+            "kind": kind,
+            "target": target_label,
+            "targetKind": target_kind,
+            "position": deepcopy(position),
+            "agentPosition": deepcopy(agent["position"]),
+        }
+        if target_limb:
+            event["targetLimb"] = target_limb
+        self._interaction_events.append(event)
         self._next_interaction_id += 1
 
     def consume_interaction_events(self) -> list[dict]:
