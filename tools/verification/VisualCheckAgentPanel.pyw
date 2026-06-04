@@ -4,6 +4,7 @@ import ctypes
 import ctypes.wintypes
 import importlib.util
 import json
+import math
 import pathlib
 import sys
 import time
@@ -161,20 +162,50 @@ def main() -> None:
         root.update_idletasks()
         root.update()
 
+        app.agent_panel_view.tree.item("section:Health", open=False)
+        app.render_agent_details_panel(force=True)
+        root.update_idletasks()
+        root.update()
+
         rows = []
-        for section in app.agent_details_tree.get_children(""):
-            rows.append(app.agent_details_tree.item(section, "text"))
-            for child in app.agent_details_tree.get_children(section):
-                rows.append(app.agent_details_tree.item(child, "text"))
+        agent_tree = app.agent_panel_view.tree
+        for section in agent_tree.get_children(""):
+            rows.append(agent_tree.item(section, "text"))
+            for child in agent_tree.get_children(section):
+                rows.append(agent_tree.item(child, "text"))
         row_labels = {row.split(":", 1)[0] for row in rows}
+        root_sections = [agent_tree.item(section, "text") for section in agent_tree.get_children("")]
+        health_stayed_closed = not bool(agent_tree.item("section:Health", "open"))
 
         agent_place = {
             key: str(value)
-            for key, value in app.agent_details_frame.place_info().items()
+            for key, value in app.agent_panel_view.frame.place_info().items()
             if key != "in"
         }
-        agent_panel_title = str(app.agent_details_frame.cget("text"))
+        agent_panel_title = str(app.agent_panel_view.frame.cget("text"))
         footer_hidden = app.selection_label.winfo_manager() == "" and app.footer_label.winfo_manager() == ""
+        basin = module.sim_resources.first_point(app.layout, "Basin", "Roman")
+        basin_label = ""
+        if basin is not None:
+            app.hover_kind = "point"
+            app.hover_id = basin["id"]
+            app.render_canvas()
+            root.update_idletasks()
+            root.update()
+            label_text_ids = app.canvas.find_withtag(module.LABEL_TEXT_TAG)
+            label_texts = [app.canvas.itemcget(item_id, "text") for item_id in label_text_ids]
+            basin_label = next((text for text in label_texts if basin["label"] in text), "")
+        cone_fill_values = [
+            app.canvas.itemcget(item_id, "fill")
+            for item_id in app.canvas.find_withtag("vision_cone")
+        ]
+        cone_click_hit = None
+        cone_agent = app.simulation.agents[0]
+        cone_point = {
+            "x": cone_agent["position"]["x"] + module.perception.VISION_DISTANCE * 0.25 * math.cos(cone_agent["headingRadians"]),
+            "y": cone_agent["position"]["y"] + module.perception.VISION_DISTANCE * 0.25 * math.sin(cone_agent["headingRadians"]),
+        }
+        cone_click_hit = app.hit_test(cone_point)
 
         image, capture_meta = capture_window(root)
         image.save(PNG_PATH)
@@ -189,9 +220,15 @@ def main() -> None:
             and image_meta["uniqueColors"] > 20
             and image_meta["panelDarkPixels"] > 30
             and required_rows.issubset(row_labels)
+            and root_sections[0] == "Needs"
+            and health_stayed_closed
             and agent_panel_title == agent["label"]
             and footer_hidden
             and agent_place.get("anchor") == "sw"
+            and "full" in basin_label
+            and all(value == "" for value in cone_fill_values)
+            and isinstance(cone_click_hit, dict)
+            and cone_click_hit.get("kind") == "agent-vision"
         )
         write_result(
             {
@@ -199,9 +236,14 @@ def main() -> None:
                 "png": str(PNG_PATH),
                 "elapsedSeconds": round(time.perf_counter() - start, 3),
                 "rows": rows,
+                "rootSections": root_sections,
+                "healthStayedClosed": health_stayed_closed,
                 "agentPanelTitle": agent_panel_title,
                 "agentPanelPlace": agent_place,
                 "footerHidden": footer_hidden,
+                "basinLabel": basin_label,
+                "coneFillValues": cone_fill_values[:10],
+                "coneClickHit": cone_click_hit,
                 **capture_meta,
                 **image_meta,
             }

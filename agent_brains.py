@@ -6,7 +6,7 @@ import random
 import living_body
 import perception
 import sim_resources
-from sim_geometry import clamp, distance
+from sim_geometry import clamp, distance, local_to_world
 
 
 HUNGER_DEPLETION_PER_SECOND = 0.34
@@ -23,6 +23,11 @@ ATTACK_INTERACTION_EXTRA = 14.0
 ATTACK_INTERACTION_RADIUS_MIN = 76.0
 ATTACK_TARGET_RADIUS_CAP = 80.0
 WATER_INTERACTION_RADIUS = 72.0
+SEARCH_WAYPOINT_RADIUS = 150.0
+SEARCH_LAST_SEEN_RADIUS = 130.0
+SEARCH_LAST_SEEN_TTL_SECONDS = 8.0
+SEARCH_ROUTE_STEP_RADIANS = 2.399963229728653
+RETURN_TO_FIRE_RADIUS_MULTIPLIER = 2.2
 
 
 def normalize_brain_state(agent: dict) -> None:
@@ -156,19 +161,43 @@ def assign_water_job(agent: dict, layout: dict, basin: dict) -> None:
 
 def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Random, fire: dict) -> None:
     remembered_empty_slots = sim_resources.fire_empty_slot_count(resources, fire["id"])
+    target_filter = {"kind": "pig", "forest": "north"}
     dead_pig = perception.nearest_visible_dead_pig(agent, resources)
     if dead_pig is not None:
         assign_dead_pig_pickup_job(agent, dead_pig, fire, "dead pig seen in cone", remembered_empty_slots=remembered_empty_slots)
         return
-    target = sim_resources.nearest_attack_target(
-        layout,
-        resources,
-        agent["position"],
-        {"kind": "pig", "forest": "north"},
-    )
-    if target is None:
-        agent["intent"] = {"action": "wander", "reason": "no north forest pig available"}
+    target = nearest_visible_attack_target(agent, {"layout": layout, "resources": resources, "agents": []}, target_filter)
+    if target is not None:
+        assign_attack_target_job(agent, fire, target, target_filter, remembered_empty_slots, rng)
         return
+    agent["job"] = {
+        "type": "hunt_food",
+        "phase": "search_target",
+        "fireId": fire["id"],
+        "rememberedEmptySlots": remembered_empty_slots,
+        "seenDeadPigCarriers": [],
+        "attack": {
+            "target": None,
+            "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
+            "reacquire": target_filter,
+            "reason": "hunt pig for fire",
+            "onDefeat": "carry_raw_pig",
+        },
+        "search": build_search_state(layout, agent, target_filter, rng),
+    }
+    agent["intent"] = {"action": "search", "target": "North Forest", "reason": "fire has an empty slot"}
+
+
+def assign_attack_target_job(
+    agent: dict,
+    fire: dict,
+    target: dict,
+    target_filter: dict,
+    remembered_empty_slots: int,
+    rng: random.Random,
+) -> None:
+    target_ref = sim_resources.attack_target_ref(target)
+    target_ref["targetLimb"] = living_body.DEFAULT_ATTACK_LIMB
     agent["job"] = {
         "type": "hunt_food",
         "phase": "attack_target",
@@ -176,14 +205,21 @@ def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Rand
         "rememberedEmptySlots": remembered_empty_slots,
         "seenDeadPigCarriers": [],
         "attack": {
-            "target": sim_resources.attack_target_ref(target),
+            "target": target_ref,
             "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
-            "reacquire": {"kind": "pig", "forest": "north"},
+            "reacquire": target_filter,
             "reason": "hunt pig for fire",
             "onDefeat": "carry_raw_pig",
         },
+        "search": {
+            "targetFilter": dict(target_filter),
+            "lastSeen": build_last_seen(target),
+            "routeIndex": 0,
+            "routeAngle": rng.uniform(0.0, math.tau),
+            "waypoint": None,
+        },
     }
-    agent["intent"] = {"action": "go_to", "target": target["label"], "reason": "fire has an empty slot"}
+    agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": "target visible"}
 
 
 def assign_dead_pig_pickup_job(
@@ -213,6 +249,13 @@ def assign_dead_pig_pickup_job(
             "reacquire": {"kind": "pig", "forest": "north"},
             "reason": "pick up dead pig",
             "onDefeat": "carry_raw_pig",
+        },
+        "search": {
+            "targetFilter": {"kind": "pig", "forest": "north"},
+            "lastSeen": build_last_seen(dead_pig),
+            "routeIndex": 0,
+            "routeAngle": 0.0,
+            "waypoint": None,
         },
     }
     agent["intent"] = {"action": "go_to", "target": dead_pig["label"], "reason": reason}
@@ -355,39 +398,60 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
         return False
     job.setdefault("rememberedEmptySlots", max(1, sim_resources.fire_empty_slot_count(resources, fire["id"])))
     job.setdefault("seenDeadPigCarriers", [])
+    normalize_search_state(job, layout, agent, rng)
+    age_search_memory(job, dt)
 
-    if job.get("phase") in {"attack_target", "pickup_dead_pig"} and should_return_because_seen_carriers(agent, context, job):
+    if job.get("phase") in {"search_target", "investigate_last_seen", "attack_target", "pickup_dead_pig"} and should_return_because_seen_carriers(agent, context, job):
         job["phase"] = "return_to_fire"
         agent["intent"] = {"action": "go_to", "target": fire["label"], "reason": "enough pig carriers seen"}
         return True
 
+    if job.get("phase") == "search_target":
+        return advance_search_target_job(agent, dt, context, job, fire)
+
+    if job.get("phase") == "investigate_last_seen":
+        return advance_investigate_last_seen_job(agent, dt, context, job, fire)
+
     if job.get("phase") == "attack_target":
-        visible_dead_pig = perception.nearest_visible_dead_pig(agent, resources)
+        visible_dead_pig = nearest_visible_dead_pig_for_food_job(agent, resources, job)
         if visible_dead_pig is not None:
             job["phase"] = "pickup_dead_pig"
             job["deadPigId"] = visible_dead_pig["id"]
+            remember_last_seen(job, visible_dead_pig)
             agent["intent"] = {"action": "go_to", "target": visible_dead_pig["label"], "reason": "dead pig seen in cone"}
             return True
         attack = job.get("attack", {})
         target_ref = attack.get("target")
         target_limb = living_body.normalize_limb(attack.get("targetLimb"))
         attack["targetLimb"] = target_limb
-        target = sim_resources.attack_target_by_ref(layout, resources, target_ref)
+        target = sim_resources.attack_target_by_ref(layout, resources, target_ref, agents=context.get("agents", []))
         if target is None:
-            target = sim_resources.nearest_attack_target(layout, resources, agent["position"], attack.get("reacquire", {}))
-            if target is None:
-                finish_job(agent, "no attack target available")
-                return False
-            target_ref = sim_resources.attack_target_ref(target)
-            target_ref["targetLimb"] = target_limb
-            attack["target"] = target_ref
+            target = nearest_visible_attack_target(agent, context, job_target_filter(job))
+            if target is not None:
+                set_attack_target(job, target)
+                agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": "target visible again"}
+                return True
+            if active_last_seen(job) is not None:
+                job["phase"] = "investigate_last_seen"
+                return True
+            job["phase"] = "search_target"
+            return True
         elif isinstance(target_ref, dict):
             target_ref["targetLimb"] = target_limb
+        if not perception.is_in_vision_cone(agent, target["position"]):
+            if active_last_seen(job) is not None:
+                job["phase"] = "investigate_last_seen"
+                agent["intent"] = {"action": "go_to", "target": "Last seen target", "reason": "target left vision"}
+                return True
+            job["phase"] = "search_target"
+            agent["intent"] = {"action": "search", "target": "Target", "reason": "target not visible"}
+            return True
+        remember_last_seen(job, target)
         attack_radius = attack_interaction_radius(agent, target)
         if not at_position(agent, target["position"], attack_radius):
             agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": attack.get("reason", "attack target")}
             return move_towards(agent, target["position"], dt, context)
-        defeated = sim_resources.defeat_attack_target(layout, resources, target_ref, rng)
+        defeated = sim_resources.defeat_attack_target(layout, resources, target_ref, rng, agents=context.get("agents", []))
         if defeated is not None and attack.get("onDefeat") == "carry_raw_pig":
             carry_dead_pig(agent, defeated)
             emit_interaction(context, agent, "attack_target", defeated, defeated.get("kind", "target"), target_limb=target_limb)
@@ -397,14 +461,20 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
     if job.get("phase") == "pickup_dead_pig":
         dead_pig = sim_resources.dead_pig_by_id(resources, job.get("deadPigId"))
         if dead_pig is None:
-            job["phase"] = "attack_target"
+            job["phase"] = "search_target"
             return True
+        if not perception.is_in_vision_cone(agent, dead_pig["position"]):
+            remember_last_seen(job, dead_pig)
+            job["phase"] = "investigate_last_seen"
+            agent["intent"] = {"action": "go_to", "target": dead_pig["label"], "reason": "dead pig left vision"}
+            return True
+        remember_last_seen(job, dead_pig)
         if not at_position(agent, dead_pig["position"], attack_interaction_radius(agent, dead_pig)):
             agent["intent"] = {"action": "go_to", "target": dead_pig["label"], "reason": "pick up dead pig"}
             return move_towards(agent, dead_pig["position"], dt, context)
         picked_up = sim_resources.pick_up_dead_pig(resources, dead_pig["id"])
         if picked_up is None:
-            job["phase"] = "attack_target"
+            job["phase"] = "search_target"
             return True
         carry_dead_pig(agent, picked_up)
         emit_interaction(context, agent, "pick_up_dead_pig", picked_up, "Dead Pig")
@@ -412,7 +482,7 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
         return True
 
     if job.get("phase") == "return_to_fire":
-        if not at_point(agent, fire):
+        if not at_position(agent, fire["position"], return_to_fire_radius(agent, fire)):
             agent["intent"] = {"action": "go_to", "target": fire["label"], "reason": "enough pig carriers seen"}
             return move_towards(agent, fire["position"], dt, context)
         finish_job(agent, "returned because enough pig carriers were seen")
@@ -443,6 +513,228 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
     return True
 
 
+def advance_search_target_job(agent: dict, dt: float, context: dict, job: dict, fire: dict) -> bool:
+    visible_dead_pig = nearest_visible_dead_pig_for_food_job(agent, context["resources"], job)
+    if visible_dead_pig is not None:
+        job["phase"] = "pickup_dead_pig"
+        job["deadPigId"] = visible_dead_pig["id"]
+        remember_last_seen(job, visible_dead_pig)
+        agent["intent"] = {"action": "go_to", "target": visible_dead_pig["label"], "reason": "dead pig seen in cone"}
+        return True
+
+    target = nearest_visible_attack_target(agent, context, job_target_filter(job))
+    if target is not None:
+        set_attack_target(job, target)
+        agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": "target visible"}
+        return True
+
+    if active_last_seen(job) is not None:
+        job["phase"] = "investigate_last_seen"
+        return True
+
+    waypoint = current_search_waypoint(job, context["layout"], agent, context["rng"])
+    if waypoint is None:
+        finish_job(agent, "no search area available")
+        return False
+    if at_position(agent, waypoint, SEARCH_WAYPOINT_RADIUS):
+        clear_search_waypoint(job)
+        return True
+    agent["intent"] = {"action": "search", "target": search_target_label(context["layout"], job), "reason": "looking for target"}
+    return move_towards(agent, waypoint, dt, context)
+
+
+def advance_investigate_last_seen_job(agent: dict, dt: float, context: dict, job: dict, fire: dict) -> bool:
+    visible_dead_pig = nearest_visible_dead_pig_for_food_job(agent, context["resources"], job)
+    if visible_dead_pig is not None:
+        job["phase"] = "pickup_dead_pig"
+        job["deadPigId"] = visible_dead_pig["id"]
+        remember_last_seen(job, visible_dead_pig)
+        agent["intent"] = {"action": "go_to", "target": visible_dead_pig["label"], "reason": "dead pig seen again"}
+        return True
+
+    target = nearest_visible_attack_target(agent, context, job_target_filter(job))
+    if target is not None:
+        set_attack_target(job, target)
+        agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": "target seen again"}
+        return True
+
+    last_seen = active_last_seen(job)
+    if last_seen is None:
+        job["phase"] = "search_target"
+        return True
+    position = last_seen["position"]
+    if not at_position(agent, position, SEARCH_LAST_SEEN_RADIUS):
+        agent["intent"] = {"action": "go_to", "target": last_seen.get("label", "Last seen target"), "reason": "investigate last seen"}
+        return move_towards(agent, position, dt, context)
+    clear_last_seen(job)
+    clear_search_waypoint(job)
+    job["phase"] = "search_target"
+    agent["intent"] = {"action": "search", "target": search_target_label(context["layout"], job), "reason": "last seen expired"}
+    return True
+
+
+def nearest_visible_dead_pig_for_food_job(agent: dict, resources: dict, job: dict) -> dict | None:
+    if agent.get("inventory", {}).get("rawPig"):
+        return None
+    if job_target_filter(job).get("kind") != "pig":
+        return None
+    return perception.nearest_visible_dead_pig(agent, resources)
+
+
+def nearest_visible_attack_target(agent: dict, context: dict, target_filter: dict) -> dict | None:
+    candidates = sim_resources.attack_targets(
+        context["layout"],
+        context["resources"],
+        target_filter,
+        agents=context.get("agents", []),
+        observer=agent,
+    )
+    return perception.nearest_visible_target(agent, candidates)
+
+
+def set_attack_target(job: dict, target: dict) -> None:
+    attack = job.setdefault("attack", {})
+    target_limb = living_body.normalize_limb(attack.get("targetLimb"))
+    target_ref = sim_resources.attack_target_ref(target)
+    target_ref["targetLimb"] = target_limb
+    attack["target"] = target_ref
+    attack["targetLimb"] = target_limb
+    remember_last_seen(job, target)
+    job["phase"] = "attack_target"
+
+
+def job_target_filter(job: dict) -> dict:
+    search = job.get("search") if isinstance(job.get("search"), dict) else {}
+    attack = job.get("attack") if isinstance(job.get("attack"), dict) else {}
+    target_filter = search.get("targetFilter") or attack.get("reacquire") or {"kind": "pig", "forest": "north"}
+    return dict(target_filter)
+
+
+def build_search_state(layout: dict, agent: dict, target_filter: dict, rng: random.Random) -> dict:
+    zone = sim_resources.search_zone_for_attack_filter(layout, target_filter)
+    route_angle = rng.uniform(0.0, math.tau)
+    if zone is not None:
+        route_angle = math.atan2(agent["position"]["y"] - zone["center"]["y"], agent["position"]["x"] - zone["center"]["x"])
+    return {
+        "targetFilter": dict(target_filter),
+        "lastSeen": None,
+        "routeIndex": 0,
+        "routeAngle": route_angle,
+        "waypoint": None,
+    }
+
+
+def normalize_search_state(job: dict, layout: dict, agent: dict, rng: random.Random) -> None:
+    target_filter = job_target_filter(job)
+    search = job.get("search") if isinstance(job.get("search"), dict) else None
+    if search is None:
+        search = build_search_state(layout, agent, target_filter, rng)
+        job["search"] = search
+    search.setdefault("targetFilter", dict(target_filter))
+    search.setdefault("lastSeen", None)
+    search.setdefault("routeIndex", 0)
+    search.setdefault("routeAngle", rng.uniform(0.0, math.tau))
+    search.setdefault("waypoint", None)
+
+
+def build_last_seen(target: dict) -> dict:
+    return {
+        "target": sim_resources.attack_target_ref(target),
+        "position": dict(target["position"]),
+        "label": target.get("label", target.get("id", "Target")),
+        "age": 0.0,
+    }
+
+
+def remember_last_seen(job: dict, target: dict) -> None:
+    search = job.setdefault("search", {})
+    search["lastSeen"] = build_last_seen(target)
+
+
+def active_last_seen(job: dict) -> dict | None:
+    search = job.get("search") if isinstance(job.get("search"), dict) else {}
+    last_seen = search.get("lastSeen")
+    if not isinstance(last_seen, dict):
+        return None
+    if float(last_seen.get("age", 0.0)) > SEARCH_LAST_SEEN_TTL_SECONDS:
+        search["lastSeen"] = None
+        return None
+    position = last_seen.get("position")
+    if not isinstance(position, dict):
+        search["lastSeen"] = None
+        return None
+    return last_seen
+
+
+def age_search_memory(job: dict, dt: float) -> None:
+    search = job.get("search") if isinstance(job.get("search"), dict) else {}
+    last_seen = search.get("lastSeen")
+    if not isinstance(last_seen, dict):
+        return
+    last_seen["age"] = float(last_seen.get("age", 0.0)) + max(0.0, dt)
+    if last_seen["age"] > SEARCH_LAST_SEEN_TTL_SECONDS:
+        search["lastSeen"] = None
+
+
+def clear_last_seen(job: dict) -> None:
+    search = job.get("search") if isinstance(job.get("search"), dict) else {}
+    search["lastSeen"] = None
+
+
+def current_search_waypoint(job: dict, layout: dict, agent: dict, rng: random.Random) -> dict | None:
+    search = job.setdefault("search", {})
+    waypoint = search.get("waypoint")
+    if isinstance(waypoint, dict):
+        return waypoint
+
+    target_filter = job_target_filter(job)
+    zone = sim_resources.search_zone_for_attack_filter(layout, target_filter)
+    route_index = int(search.get("routeIndex", 0))
+    route_angle = float(search.get("routeAngle", rng.uniform(0.0, math.tau))) + SEARCH_ROUTE_STEP_RADIANS * route_index
+    search["routeIndex"] = route_index + 1
+
+    if zone is not None:
+        half_x = max(80.0, zone["size"]["x"] * 0.5 - 160.0)
+        half_y = max(80.0, zone["size"]["y"] * 0.5 - 160.0)
+        radius_fraction = 0.34 + 0.18 * (route_index % 3)
+        local = {
+            "x": math.cos(route_angle) * half_x * radius_fraction,
+            "y": math.sin(route_angle) * half_y * radius_fraction,
+        }
+        rotated = local_to_world(local, zone["yawRadians"])
+        waypoint = {
+            "x": zone["center"]["x"] + rotated["x"],
+            "y": zone["center"]["y"] + rotated["y"],
+        }
+    else:
+        world_width = max(1.0, float(layout["root"]["gridSize"]["x"] * layout["root"]["cellSize"]))
+        world_height = max(1.0, float(layout["root"]["gridSize"]["y"] * layout["root"]["cellSize"]))
+        sweep_angle = agent["headingRadians"] + (route_index % 5 - 2) * 0.42 + (route_index // 5) * 0.7
+        waypoint = {
+            "x": clamp(agent["position"]["x"] + math.cos(sweep_angle) * 950.0, 120.0, world_width - 120.0),
+            "y": clamp(agent["position"]["y"] + math.sin(sweep_angle) * 950.0, 120.0, world_height - 120.0),
+        }
+
+    search["waypoint"] = waypoint
+    return waypoint
+
+
+def clear_search_waypoint(job: dict) -> None:
+    search = job.get("search") if isinstance(job.get("search"), dict) else {}
+    search["waypoint"] = None
+
+
+def search_target_label(layout: dict, job: dict) -> str:
+    zone = sim_resources.search_zone_for_attack_filter(layout, job_target_filter(job))
+    if zone is not None:
+        return zone.get("label", "Search area")
+    return "Search area"
+
+
+def return_to_fire_radius(agent: dict, fire: dict) -> float:
+    return point_interaction_radius(agent, fire) * RETURN_TO_FIRE_RADIUS_MULTIPLIER
+
+
 def should_return_because_seen_carriers(agent: dict, context: dict, job: dict) -> bool:
     if agent.get("inventory", {}).get("rawPig"):
         return False
@@ -464,21 +756,22 @@ def normalize_attack_job(job: dict) -> None:
     if job.get("type") != "hunt_pig":
         return
     job["type"] = "hunt_food"
-    job["phase"] = "attack_target"
+    job["phase"] = "search_target"
     job.setdefault("rememberedEmptySlots", 1)
     job.setdefault("seenDeadPigCarriers", [])
     job["attack"] = {
-        "target": {
-            "kind": "pig",
-            "id": job.get("pigId"),
-            "label": job.get("pigId") or "Pig",
-            "radius": 75.0,
-            "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
-        },
+        "target": None,
         "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
         "reacquire": {"kind": "pig", "forest": "north"},
         "reason": "hunt pig for fire",
         "onDefeat": "carry_raw_pig",
+    }
+    job["search"] = {
+        "targetFilter": {"kind": "pig", "forest": "north"},
+        "lastSeen": None,
+        "routeIndex": 0,
+        "routeAngle": 0.0,
+        "waypoint": None,
     }
 
 
@@ -553,9 +846,17 @@ def clear_carried_raw_pig(agent: dict) -> None:
 def move_towards(agent: dict, target: dict, dt: float, context: dict) -> bool:
     dx = target["x"] - agent["position"]["x"]
     dy = target["y"] - agent["position"]["y"]
-    if abs(dx) + abs(dy) <= 0.001:
+    target_distance = math.hypot(dx, dy)
+    if target_distance <= 0.001:
         return False
     heading = math.atan2(dy, dx)
+    step_distance = max(0.0, float(agent["moveSpeed"]) * dt)
+    if target_distance <= step_distance:
+        agent["targetHeadingRadians"] = heading
+        agent["headingRadians"] = heading
+        clamped, _, _ = context["clamp_agent_position"](agent, target)
+        agent["position"] = clamped
+        return True
     agent["targetHeadingRadians"] = heading
     agent["headingRadians"] = step_angle_towards(agent["headingRadians"], heading, agent["turnRate"] * dt * 1.8)
     proposed = {

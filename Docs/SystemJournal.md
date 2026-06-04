@@ -241,6 +241,13 @@ The editor currently supports:
 - Basin drinking and cooked-pig eating now deplete resource quantities at 10% of the previous per-interaction amount.
 - Water-refill jobs are delegated through vision, not global knowledge. If an agent is about to start or has not yet picked up a jar for a basin refill, seeing another live agent carrying a jar makes it abort the refill idea. Once it has picked up its own jar, it keeps the job.
 - Hunger/thirst jobs have an explicit response band. Values at or above 70 should not trigger voluntary eat/drink jobs; values at or below 35 are urgent. The special "eat/drink before logistics" behavior only happens at 55 or below so an 80% thirst agent does not drink before refilling a low basin.
+- Numpad `+` and numpad `-` step simulation speed through the configured speed presets.
+- The selected-agent panel keeps user-collapsed sections collapsed across live refreshes. `Needs` is the first section so hunger/thirst are visible by default.
+- Basin hover labels include current capacity percentage, for example `Roman Basin 70% full`.
+- Vision cones now render as outline-only wedges. The cone itself is selectable: clicking inside an agent cone selects that agent, while only clicking the agent body starts dragging.
+- Hunting no longer picks a target by omniscient nearest lookup. Food hunting starts as a generic `search_target` attack job for `{kind: pig, forest: north}` unless a target is already visible. The same search/attack/last-seen phases are meant to be reused for future intruders or soldiers by changing the attack-target filter, not by writing a pig-only behavior branch.
+- Attack jobs keep `lastSeen` target memory inside their search state. If a target leaves the vision cone, the hunter investigates the last seen position, forgets it after a short timeout, and then resumes coherent search waypoints instead of spinning or tracking invisible targets.
+- A hunter that abandons hunting because it has seen enough pig carriers returns near the fire and immediately resumes normal decisions; it should not orbit the fire because it has no pig to place.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 
@@ -332,12 +339,19 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 26. Confirm the pane shows hunger `100/100`, thirst `100/100`, and status `Alive` for fresh agents.
 27. With a low basin, confirm an 80% thirst agent refills instead of drinking first.
 28. Confirm an agent that has not picked up a jar aborts its water-refill idea when a jar-carrying agent is visible in its cone, while an agent already holding a jar continues.
-29. Open `RunBlock0ASmoke.exe`.
-30. The script initializes the Visual Studio C++ toolchain.
-31. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-32. It runs the produced smoke test.
-33. The smoke test creates one zone, one location, and one wall.
-34. It asserts the summary counts and prints the Block 0A validation message.
+29. Press numpad `+` and numpad `-` and confirm simulation speed steps through the preset values.
+30. Hover a basin and confirm the label includes capacity percentage.
+31. Collapse a selected-agent panel category, let the simulation refresh, and confirm it stays collapsed.
+32. Confirm the selected-agent panel shows `Needs` first.
+33. Confirm vision cones are outline-only and clicking inside a cone selects that agent.
+34. Start a hunt with no visible pig and confirm the hunter searches instead of immediately chasing a hidden nearest pig.
+35. Let a visible target leave the cone and confirm the hunter investigates the last seen position before forgetting it and returning to search.
+36. Open `RunBlock0ASmoke.exe`.
+37. The script initializes the Visual Studio C++ toolchain.
+38. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+39. It runs the produced smoke test.
+40. The smoke test creates one zone, one location, and one wall.
+41. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 

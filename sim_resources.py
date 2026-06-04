@@ -247,6 +247,12 @@ def first_point(layout: dict, point_type: str, faction: str | None = None) -> di
     return None
 
 
+def zone_by_id(layout: dict, zone_id: str | None) -> dict | None:
+    if zone_id is None:
+        return None
+    return next((zone for zone in layout["zones"] if zone["id"] == zone_id), None)
+
+
 def nearest_water_source_position(layout: dict, position: dict) -> dict | None:
     water_zones = [zone for zone in layout["zones"] if zone["type"] in {"Ocean", "Lake"}]
     if not water_zones:
@@ -456,22 +462,87 @@ def nearest_north_forest_pig(layout: dict, state: dict, position: dict) -> dict 
     return min(pigs, key=lambda pig: distance(position, pig["position"]))
 
 
-def nearest_attack_target(layout: dict, state: dict, position: dict, target_filter: dict) -> dict | None:
+def attack_targets(
+    layout: dict,
+    state: dict,
+    target_filter: dict,
+    *,
+    agents: list[dict] | None = None,
+    observer: dict | None = None,
+) -> list[dict]:
+    if target_filter.get("kind") == "pig":
+        pigs = state.get("pigs", [])
+        if target_filter.get("forest") == "north":
+            forest = north_forest(layout)
+            if forest is None:
+                return []
+            return [pig for pig in pigs if pig.get("forestId") == forest["id"]]
+        forest_id = target_filter.get("forestId")
+        if forest_id:
+            return [pig for pig in pigs if pig.get("forestId") == forest_id]
+        return list(pigs)
+
+    if target_filter.get("kind") in {"agent", "soldier", "intruder"}:
+        observer_id = observer.get("id") if isinstance(observer, dict) else None
+        faction = target_filter.get("faction")
+        hostile_to = target_filter.get("hostileTo")
+        targets = []
+        for agent in agents or []:
+            if agent.get("id") == observer_id:
+                continue
+            if agent.get("health", {}).get("status") == "dead":
+                continue
+            if faction and agent.get("faction") != faction:
+                continue
+            if hostile_to and agent.get("faction") == hostile_to:
+                continue
+            agent.setdefault("kind", "agent")
+            targets.append(agent)
+        return targets
+
+    return []
+
+
+def search_zone_for_attack_filter(layout: dict, target_filter: dict) -> dict | None:
+    zone = zone_by_id(layout, target_filter.get("searchZoneId") or target_filter.get("zoneId"))
+    if zone is not None:
+        return zone
     if target_filter.get("kind") == "pig":
         if target_filter.get("forest") == "north":
-            return nearest_north_forest_pig(layout, state, position)
-        pigs = state.get("pigs", [])
-        if not pigs:
-            return None
-        return min(pigs, key=lambda pig: distance(position, pig["position"]))
+            return north_forest(layout)
+        if target_filter.get("forestId"):
+            return zone_by_id(layout, target_filter.get("forestId"))
     return None
 
 
-def attack_target_by_ref(layout: dict, state: dict, target_ref: dict | None) -> dict | None:
+def nearest_attack_target(
+    layout: dict,
+    state: dict,
+    position: dict,
+    target_filter: dict,
+    *,
+    agents: list[dict] | None = None,
+    observer: dict | None = None,
+) -> dict | None:
+    targets = attack_targets(layout, state, target_filter, agents=agents, observer=observer)
+    if not targets:
+        return None
+    return min(targets, key=lambda target: distance(position, target["position"]))
+
+
+def attack_target_by_ref(
+    layout: dict,
+    state: dict,
+    target_ref: dict | None,
+    *,
+    agents: list[dict] | None = None,
+) -> dict | None:
     if not isinstance(target_ref, dict):
         return None
     if target_ref.get("kind") == "pig":
         return next((pig for pig in state.get("pigs", []) if pig["id"] == target_ref.get("id")), None)
+    if target_ref.get("kind") in {"agent", "soldier", "intruder"}:
+        return next((agent for agent in agents or [] if agent.get("id") == target_ref.get("id")), None)
     return None
 
 
@@ -485,10 +556,25 @@ def attack_target_ref(target: dict) -> dict:
     }
 
 
-def defeat_attack_target(layout: dict, state: dict, target_ref: dict, rng: random.Random) -> dict | None:
+def defeat_attack_target(
+    layout: dict,
+    state: dict,
+    target_ref: dict,
+    rng: random.Random,
+    *,
+    agents: list[dict] | None = None,
+) -> dict | None:
     if target_ref.get("kind") == "pig":
         target_limb = living_body.normalize_limb(target_ref.get("targetLimb"))
         return kill_and_respawn_pig(layout, state, target_ref.get("id"), rng, target_limb=target_limb)
+    if target_ref.get("kind") in {"agent", "soldier", "intruder"}:
+        target = attack_target_by_ref(layout, state, target_ref, agents=agents)
+        if target is None:
+            return None
+        target_limb = living_body.normalize_limb(target_ref.get("targetLimb"))
+        living_body.record_wound(target, limb=target_limb, severity="fatal", source="attack")
+        target["health"]["status"] = "dead"
+        return target
     return None
 
 

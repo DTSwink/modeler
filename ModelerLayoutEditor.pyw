@@ -311,6 +311,8 @@ class LayoutEditorApp:
         self.render_all()
         self.root.bind_all("<KeyPress-space>", self.on_spacebar_press, add="+")
         self.root.bind_all("<KeyRelease-space>", self.on_spacebar_release, add="+")
+        self.root.bind_all("<KeyPress-KP_Add>", self.on_simulation_speed_key, add="+")
+        self.root.bind_all("<KeyPress-KP_Subtract>", self.on_simulation_speed_key, add="+")
         self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
         self.root.after(2500, self.poll_for_editor_code_update)
 
@@ -714,14 +716,35 @@ class LayoutEditorApp:
 
     def apply_simulation_speed(self, _event=None) -> str | None:
         try:
-            self.simulation.speed_multiplier = max(0.05, float(self.sim_speed_var.get().rstrip("x")))
+            self.set_simulation_speed(max(0.05, float(self.sim_speed_var.get().rstrip("x"))))
         except ValueError:
-            self.simulation.speed_multiplier = 1.0
-            self.sim_speed_var.set(format_speed_label(self.simulation.speed_multiplier))
-        self.update_simulation_summary()
+            self.set_simulation_speed(1.0)
         if _event is not None:
             return "break"
         return None
+
+    def set_simulation_speed(self, multiplier: float) -> None:
+        self.simulation.speed_multiplier = max(0.05, float(multiplier))
+        self.sim_speed_var.set(format_speed_label(self.simulation.speed_multiplier))
+        self.update_simulation_summary()
+
+    def nudge_simulation_speed(self, direction: int) -> None:
+        current = float(self.simulation.speed_multiplier)
+        if direction > 0:
+            candidates = [value for value in SIMULATION_SPEED_OPTIONS if value > current + 0.001]
+            next_speed = candidates[0] if candidates else SIMULATION_SPEED_OPTIONS[-1]
+        else:
+            candidates = [value for value in reversed(SIMULATION_SPEED_OPTIONS) if value < current - 0.001]
+            next_speed = candidates[0] if candidates else SIMULATION_SPEED_OPTIONS[0]
+        self.set_simulation_speed(next_speed)
+        self.status_var.set(f"Simulation speed set to {format_speed_label(next_speed)}.")
+
+    def on_simulation_speed_key(self, event: tk.Event) -> str:
+        if getattr(event, "keysym", "") == "KP_Add":
+            self.nudge_simulation_speed(1)
+        else:
+            self.nudge_simulation_speed(-1)
+        return "break"
 
     def toggle_simulation(self) -> None:
         self.simulation.running = not self.simulation.running
@@ -802,6 +825,17 @@ class LayoutEditorApp:
             if distance(world_point, agent["position"]) <= self.agent_hit_radius_world(agent):
                 return {"kind": "agent", "id": agent["id"]}
         return None
+
+    def get_agent_vision_cone_hit(self, world_point: dict) -> dict | None:
+        visible_agents = [
+            agent
+            for agent in self.simulation.agents
+            if agent.get("health", {}).get("status") != "dead" and perception.is_in_vision_cone(agent, world_point)
+        ]
+        if not visible_agents:
+            return None
+        agent = min(visible_agents, key=lambda item: distance(world_point, item["position"]))
+        return {"kind": "agent-vision", "id": agent["id"]}
 
     def should_draw_agent_label(self, agent: dict) -> bool:
         return (self.hover_kind == "agent" and self.hover_id == agent["id"]) or (
@@ -1515,7 +1549,7 @@ class LayoutEditorApp:
     def hover_target_from_hit(self, hit: dict | None) -> tuple[str | None, str | None]:
         if not hit:
             return (None, None)
-        if hit["kind"] == "agent":
+        if hit["kind"] in {"agent", "agent-vision"}:
             return ("agent", hit["id"])
         if hit["kind"] == "zone":
             return ("zone", hit["id"])
@@ -1733,6 +1767,16 @@ class LayoutEditorApp:
             (screen["x"] - base * 1.45, screen["y"] - base * 0.25, "e"),
         ]
 
+    def point_label_text(self, point: dict) -> str:
+        if point["type"] != "Basin":
+            return point["label"]
+        basin = sim_resources.basin_state(self.simulation.resources, point["id"])
+        if basin is None:
+            return point["label"]
+        capacity = float(basin.get("capacity", 0.0))
+        maximum = max(1.0, float(basin.get("maximum", sim_resources.BASIN_MAX_CAPACITY)))
+        return f"{point['label']} {int(round(capacity / maximum * 100.0))}% full"
+
     def draw_point_labels(self) -> None:
         visible_points = [point for point in self.layout["points"] if self.should_draw_point_label(point)]
         visible_points.sort(
@@ -1754,7 +1798,7 @@ class LayoutEditorApp:
                 bbox = self.draw_badge_label(
                     candidate_x,
                     candidate_y,
-                    point["label"],
+                    self.point_label_text(point),
                     anchor=anchor,
                     font=("Segoe UI", font_size, "bold" if point["type"] in MAJOR_POINT_TYPES else "normal"),
                     text_fill="#1f1a15",
@@ -1955,14 +1999,12 @@ class LayoutEditorApp:
         for point in cone_points:
             screen = self.world_to_canvas(point)
             screen_points.extend([screen["x"], screen["y"]])
-        color = blend_hex(faction_color(agent["faction"]), CANVAS_BACKGROUND, 0.88)
         outline = blend_hex(faction_color(agent["faction"]), CANVAS_BACKGROUND, 0.78)
         self.canvas.create_polygon(
             screen_points,
-            fill=color,
+            fill="",
             outline=outline,
             width=1,
-            stipple="gray12",
             tags=("vision_cone",),
         )
 
@@ -2398,6 +2440,10 @@ class LayoutEditorApp:
         if agent_hit:
             return agent_hit
 
+        vision_hit = self.get_agent_vision_cone_hit(world_point)
+        if vision_hit:
+            return vision_hit
+
         handle_hit = self.get_handle_hit(world_point)
         if handle_hit:
             return handle_hit
@@ -2446,7 +2492,7 @@ class LayoutEditorApp:
             self.render_all()
             return
 
-        if hit["kind"] == "agent":
+        if hit["kind"] in {"agent", "agent-vision"}:
             self.selected_kind = "agent"
             self.selected_id = hit["id"]
             self.remember_last_clicked_agent(hit["id"])
@@ -2504,6 +2550,8 @@ class LayoutEditorApp:
                     "y": world_point["y"] - item["position"]["y"],
                 },
             }
+        elif hit["kind"] == "agent-vision":
+            self.drag_state = None
         elif hit["kind"] == "point-radius":
             self.drag_state = {"type": "resize-point", "beforeState": before_state}
         elif hit["kind"] == "point-facing":
@@ -2647,7 +2695,7 @@ class LayoutEditorApp:
         hit = self.hit_test(world_point)
         hover_kind, hover_id = self.hover_target_from_hit(hit)
         hover_changed = self.set_hover_target(hover_kind, hover_id)
-        if hit and hit["kind"] == "agent":
+        if hit and hit["kind"] in {"agent", "agent-vision"}:
             self.canvas.configure(cursor="hand2")
         elif hit and hit["kind"] in {"zone-handle", "point-radius", "point-facing", "wall-endpoint"}:
             self.canvas.configure(cursor="crosshair")

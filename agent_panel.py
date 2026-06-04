@@ -22,6 +22,7 @@ class AgentPanelView:
     ) -> None:
         self.root = parent.winfo_toplevel()
         self.refresh_callback = refresh_callback
+        self.section_open_state: dict[str, bool] = {}
         self.frame = ttk.LabelFrame(parent, text="", padding=8)
         self.frame.place(x=0, rely=1.0, y=0, anchor="sw", width=PANEL_WIDTH, height=PANEL_HEIGHT)
         self.frame.place_forget()
@@ -44,6 +45,8 @@ class AgentPanelView:
         self.tree.bind("<MouseWheel>", mousewheel_callback)
         self.tree.bind("<Button-4>", mousewheel_callback)
         self.tree.bind("<Button-5>", mousewheel_callback)
+        self.tree.bind("<<TreeviewOpen>>", self.remember_section_state)
+        self.tree.bind("<<TreeviewClose>>", self.remember_section_state)
         editor_command_bridge.install_tk_command_bridge(
             self.root,
             {
@@ -61,13 +64,23 @@ class AgentPanelView:
     def show_agent(self, agent: dict) -> None:
         self.frame.configure(text=agent["label"])
         self.frame.place(x=0, rely=1.0, y=0, anchor="sw", width=PANEL_WIDTH, height=PANEL_HEIGHT)
+        self.capture_section_state()
         self.tree.delete(*self.tree.get_children())
 
         for section in agent_state.agent_snapshot_sections(agent):
             section_id = f"section:{section['title']}"
-            self.tree.insert("", "end", iid=section_id, text=section["title"], open=True)
+            is_open = self.section_open_state.get(section["title"], section["title"] == "Needs")
+            self.tree.insert("", "end", iid=section_id, text=section["title"], open=is_open)
             for row in section["rows"]:
                 self.tree.insert(section_id, "end", text=f"{row['label']}: {format_agent_detail_value(row)}")
+
+    def capture_section_state(self) -> None:
+        for section_id in self.tree.get_children(""):
+            title = str(self.tree.item(section_id, "text"))
+            self.section_open_state[title] = bool(self.tree.item(section_id, "open"))
+
+    def remember_section_state(self, _event: tk.Event | None = None) -> None:
+        self.root.after_idle(self.capture_section_state)
 
     def scroll(self, event: tk.Event) -> None:
         if getattr(event, "delta", 0):

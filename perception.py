@@ -27,14 +27,33 @@ def is_in_vision_cone(agent: dict, target_position: dict) -> bool:
 
 
 def nearest_visible_dead_pig(agent: dict, resources: dict) -> dict | None:
-    visible = [
-        dead_pig
-        for dead_pig in resources.get("deadPigs", [])
-        if is_in_vision_cone(agent, dead_pig["position"])
-    ]
+    visible = visible_targets(agent, resources.get("deadPigs", []))
     if not visible:
         return None
     return min(visible, key=lambda dead_pig: distance(agent["position"], dead_pig["position"]))
+
+
+def visible_targets(observer: dict, targets: list[dict]) -> list[dict]:
+    visible = []
+    observer_id = observer.get("id")
+    for target in targets:
+        if target.get("id") == observer_id:
+            continue
+        if target.get("health", {}).get("status") == "dead" and target.get("kind") != "dead_pig":
+            continue
+        position = target.get("position")
+        if not isinstance(position, dict):
+            continue
+        if is_in_vision_cone(observer, position):
+            visible.append(target)
+    return visible
+
+
+def nearest_visible_target(observer: dict, targets: list[dict]) -> dict | None:
+    visible = visible_targets(observer, targets)
+    if not visible:
+        return None
+    return min(visible, key=lambda target: distance(observer["position"], target["position"]))
 
 
 def visible_dead_pig_carriers(observer: dict, agents: list[dict]) -> list[dict]:

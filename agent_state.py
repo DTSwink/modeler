@@ -75,6 +75,13 @@ def agent_snapshot_sections(agent: dict) -> list[dict]:
     normalize_agent_state(agent)
     return [
         {
+            "title": "Needs",
+            "rows": [
+                {"label": "Hunger", "value": agent["needs"]["hunger"], "kind": "meter", "maximum": 100},
+                {"label": "Thirst", "value": agent["needs"]["thirst"], "kind": "meter", "maximum": 100},
+            ],
+        },
+        {
             "title": "Health",
             "rows": [
                 {"label": "Status", "value": agent["health"]["status"].title()},
@@ -87,13 +94,6 @@ def agent_snapshot_sections(agent: dict) -> list[dict]:
             "rows": [
                 {"label": living_body.limb_label(limb), "value": _format_limb_state(agent, limb)}
                 for limb in living_body.LIMB_TYPES
-            ],
-        },
-        {
-            "title": "Needs",
-            "rows": [
-                {"label": "Hunger", "value": agent["needs"]["hunger"], "kind": "meter", "maximum": 100},
-                {"label": "Thirst", "value": agent["needs"]["thirst"], "kind": "meter", "maximum": 100},
             ],
         },
         {
