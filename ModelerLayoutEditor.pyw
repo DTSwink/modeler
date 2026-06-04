@@ -12,6 +12,9 @@ from tkinter import filedialog, messagebox, ttk
 
 import agent_panel
 import agent_state
+import agent_brains
+import editor_runtime
+import sim_resources
 from editor_runtime import RomanSimulationRuntime
 from editor_view_state import read_saved_view, write_saved_view
 from layout_document import deep_copy, normalize_layout, read_json, write_json
@@ -69,7 +72,15 @@ ROMAN_AGENT_COUNT = 5
 DYNAMIC_RELOAD_MODULES = [
     agent_state,
     agent_panel,
+    agent_brains,
+    editor_runtime,
+    sim_resources,
 ]
+OMNIDIRECTIONAL_POINT_TYPES = {
+    "Fire",
+    "Basin",
+    "JarLocation",
+}
 SPACEBAR_TEXT_INPUT_CLASSES = {
     "Entry",
     "TEntry",
@@ -86,6 +97,7 @@ LOCATION_TYPE_COLORS = {
     "CommanderChair": "#f0c94f",
     "Fire": "#eb6d3a",
     "Basin": "#2f6dff",
+    "JarLocation": "#d2ad58",
     "WatchTower": "#8257e5",
     "Gate": "",
 }
@@ -113,6 +125,7 @@ POINT_TYPES = [
     "Bell",
     "BigAlarm",
     "Gate",
+    "JarLocation",
     "InfirmaryBed",
     "NurseStation",
     "SpawnPoint",
@@ -170,6 +183,10 @@ def faction_color(faction: str) -> str:
 
 def semantic_location_color(location: dict) -> str:
     return LOCATION_TYPE_COLORS.get(location["type"], faction_color(location["faction"]))
+
+
+def point_has_facing(point: dict) -> bool:
+    return point["type"] not in OMNIDIRECTIONAL_POINT_TYPES
 
 
 def configure_windows_app_identity() -> None:
@@ -739,7 +756,8 @@ class LayoutEditorApp:
     def draw_agent(self, agent: dict) -> None:
         screen = self.world_to_canvas(agent["position"])
         radius = self.agent_visual_radius_pixels(agent)
-        fill = blend_hex(faction_color(agent["faction"]), "#f7f4ee", 0.18)
+        is_dead = agent.get("health", {}).get("status") == "dead"
+        fill = "#8f8a82" if is_dead else blend_hex(faction_color(agent["faction"]), "#f7f4ee", 0.18)
         outline = "#e3bf47" if self.selected_kind == "agent" and self.selected_id == agent["id"] else "#1f1a15"
         outline_width = 3 if self.selected_kind == "agent" and self.selected_id == agent["id"] else 2
         facing_length = radius + 8.0
@@ -769,6 +787,37 @@ class LayoutEditorApp:
             fill="#f8f6f1",
             outline="",
         )
+        self.draw_agent_inventory_marker(agent, screen, radius)
+
+    def draw_agent_inventory_marker(self, agent: dict, screen: dict, radius: float) -> None:
+        inventory = agent.get("inventory", {})
+        if not inventory:
+            return
+        marker_x = screen["x"] + radius * 0.72
+        marker_y = screen["y"] - radius * 0.72
+        marker_radius = max(3.0, radius * 0.26)
+        if inventory.get("rawPig"):
+            self.canvas.create_oval(
+                marker_x - marker_radius,
+                marker_y - marker_radius,
+                marker_x + marker_radius,
+                marker_y + marker_radius,
+                fill="#9c5b26",
+                outline="#4e3320",
+                width=1,
+            )
+            return
+        if inventory.get("jar"):
+            fill = "#3e8bff" if inventory.get("jarFilled") else "#f6f1df"
+            self.canvas.create_rectangle(
+                marker_x - marker_radius,
+                marker_y - marker_radius,
+                marker_x + marker_radius,
+                marker_y + marker_radius,
+                fill=fill,
+                outline="#4f5d70",
+                width=1,
+            )
 
     def draw_agent_labels(self) -> None:
         for agent in self.simulation.agents:
@@ -837,7 +886,7 @@ class LayoutEditorApp:
             self._sync_world_controls()
         if changed:
             self.record_undo_state(before_state)
-            self.clamp_all_agents_to_bounds()
+            self.simulation.attach_layout(self.layout)
             self.mark_dirty(message)
         else:
             self.update_meta_and_title()
@@ -1021,14 +1070,21 @@ class LayoutEditorApp:
         show_error_dialog: bool = True,
         raise_errors: bool = False,
     ) -> str | None:
-        global agent_state, agent_panel, DYNAMIC_RELOAD_MODULES
+        global agent_state, agent_panel, agent_brains, editor_runtime, sim_resources, RomanSimulationRuntime, DYNAMIC_RELOAD_MODULES
         try:
             importlib.invalidate_caches()
             agent_state = importlib.reload(agent_state)
             agent_panel = importlib.reload(agent_panel)
+            agent_brains = importlib.reload(agent_brains)
+            sim_resources = importlib.reload(sim_resources)
+            editor_runtime = importlib.reload(editor_runtime)
+            RomanSimulationRuntime = editor_runtime.RomanSimulationRuntime
             DYNAMIC_RELOAD_MODULES = [
                 agent_state,
                 agent_panel,
+                agent_brains,
+                editor_runtime,
+                sim_resources,
             ]
             self.rebuild_dynamic_widgets()
             self.loaded_dynamic_module_mtimes = self.current_dynamic_module_mtimes()
@@ -1094,9 +1150,14 @@ class LayoutEditorApp:
                 f"Current size: {int(selected['size']['x'])} x {int(selected['size']['y'])}."
             )
         elif self.selected_kind == "point":
-            self.selection_var.set(
-                f"{selected['label']} selected. Drag the location to move it, drag the east handle to change radius, and drag the facing handle to rotate it."
-            )
+            if point_has_facing(selected):
+                self.selection_var.set(
+                    f"{selected['label']} selected. Drag the location to move it, drag the east handle to change radius, and drag the facing handle to rotate it."
+                )
+            else:
+                self.selection_var.set(
+                    f"{selected['label']} selected. Drag the location to move it, or drag the east handle to change radius."
+                )
         elif self.selected_kind == "agent":
             self.selection_var.set(
                 f"{selected['label']} selected. Drag the agent freely across the map while the simulation runs or pauses. "
@@ -1222,7 +1283,8 @@ class LayoutEditorApp:
         self._inspector_entry("Position X", vars_map["x"], lambda: self._apply_point_inspector(point, vars_map))
         self._inspector_entry("Position Y", vars_map["y"], lambda: self._apply_point_inspector(point, vars_map))
         self._inspector_entry("Radius", vars_map["radius"], lambda: self._apply_point_inspector(point, vars_map))
-        self._inspector_entry("Facing Degrees", vars_map["facing"], lambda: self._apply_point_inspector(point, vars_map))
+        if point_has_facing(point):
+            self._inspector_entry("Facing Degrees", vars_map["facing"], lambda: self._apply_point_inspector(point, vars_map))
         self._inspector_entry("Slot Count", vars_map["slotCount"], lambda: self._apply_point_inspector(point, vars_map))
 
     def render_wall_inspector(self, wall: dict) -> None:
@@ -1306,7 +1368,8 @@ class LayoutEditorApp:
             point["position"]["x"] = float(vars_map["x"].get())
             point["position"]["y"] = float(vars_map["y"].get())
             point["radius"] = max(10.0, float(vars_map["radius"].get()))
-            point["facingRadians"] = math.radians(float(vars_map["facing"].get()))
+            if point_has_facing(point):
+                point["facingRadians"] = math.radians(float(vars_map["facing"].get()))
             point["slotCount"] = max(0, int(float(vars_map["slotCount"].get())))
         except ValueError:
             self.status_var.set("Location inspector ignored until the numbers are valid.")
@@ -1672,6 +1735,8 @@ class LayoutEditorApp:
                 self.draw_wall(wall)
             for point in self.layout["points"]:
                 self.draw_point(point)
+            for pig in self.simulation.resources.get("pigs", []):
+                self.draw_pig(pig)
             for agent in self.simulation.agents:
                 self.draw_agent(agent)
             self.draw_point_labels()
@@ -1803,6 +1868,30 @@ class LayoutEditorApp:
         width = max(4, wall["thickness"] * self.view["scale"] * 0.32)
         self.canvas.create_line(a["x"], a["y"], b["x"], b["y"], fill=color, width=width, capstyle=tk.ROUND)
 
+    def draw_pig(self, pig: dict) -> None:
+        screen = self.world_to_canvas(pig["position"])
+        radius = max(3.0, pig["radius"] * self.view["scale"] * 0.09)
+        self.canvas.create_oval(
+            screen["x"] - radius,
+            screen["y"] - radius,
+            screen["x"] + radius,
+            screen["y"] + radius,
+            fill="#8d5a32",
+            outline="#4e3320",
+            width=1,
+            tags=("pig",),
+        )
+        snout_radius = max(1.5, radius * 0.35)
+        self.canvas.create_oval(
+            screen["x"] + radius * 0.25 - snout_radius,
+            screen["y"] - snout_radius,
+            screen["x"] + radius * 0.25 + snout_radius,
+            screen["y"] + snout_radius,
+            fill="#b5774a",
+            outline="",
+            tags=("pig",),
+        )
+
     def draw_point(self, point: dict) -> None:
         screen = self.world_to_canvas(point["position"])
         color = semantic_location_color(point)
@@ -1821,7 +1910,13 @@ class LayoutEditorApp:
             width=outline_width,
         )
         inner_radius = self.location_inner_radius_pixels(point)
-        if color:
+        if point["type"] == "Basin":
+            self.draw_basin_resource(point, screen, inner_radius)
+        elif point["type"] == "Fire":
+            self.draw_fire_resource(point, screen, inner_radius, radius)
+        elif point["type"] == "JarLocation":
+            self.draw_jar_location(point, screen, inner_radius)
+        elif color:
             self.canvas.create_oval(
                 screen["x"] - inner_radius,
                 screen["y"] - inner_radius,
@@ -1830,15 +1925,133 @@ class LayoutEditorApp:
                 fill=color,
                 outline="",
             )
-        facing_length = radius + max(16, point["radius"] * self.view["scale"] * 0.14)
-        self.canvas.create_line(
-            screen["x"],
-            screen["y"],
-            screen["x"] + math.cos(point["facingRadians"]) * facing_length,
-            screen["y"] + math.sin(point["facingRadians"]) * facing_length,
-            fill=arrow_color,
-            width=3 if is_selected else 2,
-            arrow=tk.LAST,
+        if point_has_facing(point):
+            facing_length = radius + max(16, point["radius"] * self.view["scale"] * 0.14)
+            self.canvas.create_line(
+                screen["x"],
+                screen["y"],
+                screen["x"] + math.cos(point["facingRadians"]) * facing_length,
+                screen["y"] + math.sin(point["facingRadians"]) * facing_length,
+                fill=arrow_color,
+                width=3 if is_selected else 2,
+                arrow=tk.LAST,
+                tags=("point_facing_arrow",),
+            )
+
+    def draw_basin_resource(self, point: dict, screen: dict, inner_radius: float) -> None:
+        self.canvas.create_oval(
+            screen["x"] - inner_radius,
+            screen["y"] - inner_radius,
+            screen["x"] + inner_radius,
+            screen["y"] + inner_radius,
+            fill="#f9f7ef",
+            outline="",
+            tags=("resource_basin",),
+        )
+        fraction = sim_resources.basin_capacity_fraction(self.simulation.resources, point["id"])
+        self.draw_disc_fill_fraction(screen["x"], screen["y"], inner_radius, fraction, "#2f6dff", tags=("resource_basin_fill",))
+        self.canvas.create_oval(
+            screen["x"] - inner_radius,
+            screen["y"] - inner_radius,
+            screen["x"] + inner_radius,
+            screen["y"] + inner_radius,
+            fill="",
+            outline="#d7d2c7",
+            width=1,
+            tags=("resource_basin",),
+        )
+
+    def draw_disc_fill_fraction(self, cx: float, cy: float, radius: float, fraction: float, fill: str, *, tags: tuple[str, ...]) -> None:
+        fraction = clamp(fraction, 0.0, 1.0)
+        if fraction <= 0.0:
+            return
+        if fraction >= 1.0:
+            self.canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill=fill, outline="", tags=tags)
+            return
+        boundary_y = cy + radius - 2.0 * radius * fraction
+        dy = boundary_y - cy
+        dx = math.sqrt(max(0.0, radius * radius - dy * dy))
+        right_angle = math.atan2(dy, dx)
+        left_angle = math.atan2(dy, -dx)
+        if right_angle < 0.0:
+            right_angle += math.tau
+        if left_angle < 0.0:
+            left_angle += math.tau
+        if left_angle < right_angle:
+            left_angle += math.tau
+        points = []
+        steps = 24
+        for index in range(steps + 1):
+            theta = right_angle + (left_angle - right_angle) * index / steps
+            points.extend([cx + math.cos(theta) * radius, cy + math.sin(theta) * radius])
+        self.canvas.create_polygon(points, fill=fill, outline="", tags=tags)
+
+    def draw_fire_resource(self, point: dict, screen: dict, inner_radius: float, outer_radius: float) -> None:
+        self.canvas.create_oval(
+            screen["x"] - inner_radius,
+            screen["y"] - inner_radius,
+            screen["x"] + inner_radius,
+            screen["y"] + inner_radius,
+            fill="#eb6d3a",
+            outline="",
+            tags=("resource_fire",),
+        )
+        fire_state = sim_resources.fire_state(self.simulation.resources, point["id"])
+        slots = fire_state["slots"] if fire_state is not None else []
+        slot_width = max(24.0, outer_radius * 1.58)
+        slot_height = max(8.0, outer_radius * 0.42)
+        gap = max(4.0, slot_height * 0.42)
+        start_x = screen["x"] + outer_radius * 1.45
+        start_y = screen["y"] - (len(slots) * slot_height + max(0, len(slots) - 1) * gap) - outer_radius * 0.32
+        for index, slot in enumerate(slots):
+            y = start_y + index * (slot_height + gap)
+            self.draw_fire_slot(start_x, y, slot_width, slot_height, slot)
+
+    def draw_fire_slot(self, x: float, y: float, width: float, height: float, slot: dict) -> None:
+        self.canvas.create_rectangle(
+            x,
+            y,
+            x + width,
+            y + height,
+            fill="#d8d0bd",
+            outline="#6c665b",
+            width=1,
+            tags=("resource_fire_slot",),
+        )
+        state = slot.get("state", "empty")
+        amount_fraction = clamp(float(slot.get("amount", 0.0)) / 100.0, 0.0, 1.0)
+        if state == "empty" or amount_fraction <= 0.0:
+            return
+        fill = "#9f5b05" if state == "raw" else "#f2e92d"
+        self.canvas.create_rectangle(
+            x + 2,
+            y + 2,
+            x + 2 + max(0.0, width - 4) * amount_fraction,
+            y + height - 2,
+            fill=fill,
+            outline="",
+            tags=("resource_fire_slot_fill", f"resource_fire_slot_{state}"),
+        )
+
+    def draw_jar_location(self, point: dict, screen: dict, inner_radius: float) -> None:
+        size = inner_radius * 1.22
+        self.canvas.create_rectangle(
+            screen["x"] - size * 0.48,
+            screen["y"] - size * 0.42,
+            screen["x"] + size * 0.48,
+            screen["y"] + size * 0.42,
+            fill="#d2ad58",
+            outline="",
+            tags=("resource_jar_location",),
+        )
+        self.canvas.create_rectangle(
+            screen["x"] - size * 0.22,
+            screen["y"] - size * 0.65,
+            screen["x"] + size * 0.22,
+            screen["y"] - size * 0.36,
+            fill="#d2ad58",
+            outline="",
+            tags=("resource_jar_location",),
         )
 
     def point_visual_radius_pixels(self, point: dict) -> float:
@@ -1900,7 +2113,10 @@ class LayoutEditorApp:
                     tags=(HANDLE_TAG,),
                 )
         elif self.selected_kind == "point":
-            for handle in (self.point_radius_handle(item), self.point_facing_handle(item)):
+            handles = [self.point_radius_handle(item)]
+            if point_has_facing(item):
+                handles.append(self.point_facing_handle(item))
+            for handle in handles:
                 screen = self.world_to_canvas(handle)
                 self.canvas.create_oval(
                     screen["x"] - 6,
@@ -1952,7 +2168,7 @@ class LayoutEditorApp:
         elif self.selected_kind == "point":
             if distance(world_point, self.point_radius_handle(selected)) <= handle_radius:
                 return {"kind": "point-radius", "id": selected["id"]}
-            if distance(world_point, self.point_facing_handle(selected)) <= handle_radius:
+            if point_has_facing(selected) and distance(world_point, self.point_facing_handle(selected)) <= handle_radius:
                 return {"kind": "point-facing", "id": selected["id"]}
         elif self.selected_kind == "wall":
             if distance(world_point, selected["a"]) <= handle_radius:

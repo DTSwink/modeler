@@ -1,7 +1,7 @@
 {
   "title": "Roman vs Ottoman - Block 0A",
   "block": "0A",
-  "updated": "2026-06-03",
+  "updated": "2026-06-04",
   "stage": "Engine-independent simulation layout authoring",
   "summary": "This authored layout is the source data for the next simulation blocks. Every zone, wall, and location here becomes future runtime simulation input.",
   "footer": "This viewer is the live authoring surface for future simulation inputs. Hover zones and locations to inspect labels, then save to update the current simulation layout.",
@@ -28,7 +28,7 @@
       "zoom": 2.7731,
       "center": {
         "x": 7149.42,
-        "y": 4000.0
+        "y": 4000
       }
     }
   },
@@ -45,7 +45,7 @@
         "x": 3795.4857703631005,
         "y": 8078.508341511288
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#4c9fd6",
       "priority": 0,
       "faction": "Neutral"
@@ -62,7 +62,7 @@
         "x": 3316.912631189065,
         "y": 2439.7906994305195
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#bca278",
       "priority": 10,
       "faction": "Roman"
@@ -79,7 +79,7 @@
         "x": 3400,
         "y": 2300
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#b18e6a",
       "priority": 10,
       "faction": "Ottoman"
@@ -96,7 +96,7 @@
         "x": 2600,
         "y": 3200
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#5aa9de",
       "priority": 0,
       "faction": "Neutral"
@@ -113,7 +113,7 @@
         "x": 16621.884200196248,
         "y": 1237.1933267909606
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#5f9341",
       "priority": 0,
       "faction": "Neutral"
@@ -130,7 +130,7 @@
         "x": 16542.7080944225,
         "y": 1303.1379266397907
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#4f8039",
       "priority": 0,
       "faction": "Neutral"
@@ -141,13 +141,13 @@
       "label": "Roman Tent Area",
       "center": {
         "x": 6002.955726385968,
-        "y": 4000.0
+        "y": 4000
       },
       "size": {
         "x": 1393.1033050994072,
         "y": 975.9162797722079
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#b7b2ab",
       "priority": 22,
       "faction": "Roman"
@@ -164,7 +164,7 @@
         "x": 580.56372568183,
         "y": 523.3789753775673
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#ede7df",
       "priority": 23,
       "faction": "Roman"
@@ -181,7 +181,7 @@
         "x": 1549.7916932748103,
         "y": 468.8857097643704
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#d4934f",
       "priority": 23,
       "faction": "Roman"
@@ -191,14 +191,14 @@
       "type": "TentArea",
       "label": "Ottoman Tent Area",
       "center": {
-        "x": 16938.0,
-        "y": 4000.0
+        "x": 16938,
+        "y": 4000
       },
       "size": {
-        "x": 1428.0,
-        "y": 920.0
+        "x": 1428,
+        "y": 920
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#b7b2ab",
       "priority": 22,
       "faction": "Ottoman"
@@ -208,14 +208,14 @@
       "type": "Infirmary",
       "label": "Ottoman Infirmary",
       "center": {
-        "x": 18162.0,
-        "y": 3540.0
+        "x": 18162,
+        "y": 3540
       },
       "size": {
-        "x": 884.0,
-        "y": 690.0
+        "x": 884,
+        "y": 690
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#ede7df",
       "priority": 23,
       "faction": "Ottoman"
@@ -225,14 +225,14 @@
       "type": "TrainingArea",
       "label": "Ottoman Training Area",
       "center": {
-        "x": 18026.0,
-        "y": 4506.0
+        "x": 18026,
+        "y": 4506
       },
       "size": {
-        "x": 1020.0,
-        "y": 650.0
+        "x": 1020,
+        "y": 650
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#d4934f",
       "priority": 23,
       "faction": "Ottoman"
@@ -395,7 +395,7 @@
       },
       "radius": 163.81923985689312,
       "facingRadians": 1.5967212798701578,
-      "slotCount": 1
+      "slotCount": 3
     },
     {
       "id": "point-roman-basin",
@@ -411,6 +411,19 @@
       "slotCount": 1
     },
     {
+      "id": "point-roman-jar-location",
+      "type": "JarLocation",
+      "label": "Roman Jar Location",
+      "faction": "Roman",
+      "position": {
+        "x": 6290,
+        "y": 3250
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
+    },
+    {
       "id": "point-roman-watchtower",
       "label": "Roman Watchtower",
       "type": "WatchTower",
@@ -420,7 +433,7 @@
         "y": 4950
       },
       "radius": 868.6430668577385,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -433,7 +446,7 @@
         "y": 7300
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -446,7 +459,7 @@
         "y": 4000
       },
       "radius": 100,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -472,8 +485,8 @@
         "y": 4100
       },
       "radius": 90,
-      "facingRadians": 0.0,
-      "slotCount": 1
+      "facingRadians": 0,
+      "slotCount": 3
     },
     {
       "id": "point-ottoman-basin",
@@ -485,8 +498,21 @@
         "y": 3600
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
+    },
+    {
+      "id": "point-ottoman-jar-location",
+      "type": "JarLocation",
+      "label": "Ottoman Jar Location",
+      "faction": "Ottoman",
+      "position": {
+        "x": 16740,
+        "y": 3860
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
     },
     {
       "id": "point-ottoman-watchtower",
@@ -511,7 +537,7 @@
         "y": 4700
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -553,7 +579,7 @@
       },
       "radius": 163.81923985689312,
       "facingRadians": 1.5967212798701578,
-      "slotCount": 1
+      "slotCount": 3
     },
     {
       "id": "point-roman-basin",
@@ -569,6 +595,19 @@
       "slotCount": 1
     },
     {
+      "id": "point-roman-jar-location",
+      "type": "JarLocation",
+      "label": "Roman Jar Location",
+      "faction": "Roman",
+      "position": {
+        "x": 6290,
+        "y": 3250
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
+    },
+    {
       "id": "point-roman-watchtower",
       "label": "Roman Watchtower",
       "type": "WatchTower",
@@ -578,7 +617,7 @@
         "y": 4950
       },
       "radius": 868.6430668577385,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -591,7 +630,7 @@
         "y": 7300
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -604,7 +643,7 @@
         "y": 4000
       },
       "radius": 100,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -630,8 +669,8 @@
         "y": 4100
       },
       "radius": 90,
-      "facingRadians": 0.0,
-      "slotCount": 1
+      "facingRadians": 0,
+      "slotCount": 3
     },
     {
       "id": "point-ottoman-basin",
@@ -643,8 +682,21 @@
         "y": 3600
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
+    },
+    {
+      "id": "point-ottoman-jar-location",
+      "type": "JarLocation",
+      "label": "Ottoman Jar Location",
+      "faction": "Ottoman",
+      "position": {
+        "x": 16740,
+        "y": 3860
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
     },
     {
       "id": "point-ottoman-watchtower",
@@ -669,7 +721,7 @@
         "y": 4700
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {

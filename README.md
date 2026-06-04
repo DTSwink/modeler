@@ -6,7 +6,7 @@ The native layout editor in this repo is not just a preview. It is the live auth
 
 The same native editor is now also the first runtime sandbox. Roman-side prototype agents spawn from the authored Roman camp, then roam across the full authored map, so layout work and early simulation debugging happen in one place instead of splitting across tools.
 
-The runtime stepping logic, saved camera-state logic, selected-agent panel, and background command bridge are now split into dedicated helper modules so those behaviors can evolve without forcing unrelated editor UI changes.
+The runtime stepping logic, saved camera-state logic, selected-agent panel, background command bridge, resource state, and first needs-driven brain jobs are now split into dedicated helper modules so those behaviors can evolve without forcing unrelated editor UI changes.
 
 Headless agent-state defaults and agent-attribute snapshot helpers now also live in a dedicated module, so needs and health can grow without baking UI assumptions into the runtime stepper.
 
@@ -59,6 +59,10 @@ Block 0A has been corrected to be engine-independent:
 - Agent selection hides the old footer text so the attribute panel is the only active agent readout.
 - `Refresh App` reloads extracted dynamic modules in place instead of closing and reopening the editor window.
 - Hidden command bridge for `refresh` and `ping` against the already-open editor window.
+- Runtime basin capacity drawn inside basin markers and depleted by drinking.
+- Runtime fire slots drawn beside fire markers, with empty/raw/cooked pig states and cooked food depletion.
+- Fire, basin, and jar-location markers are omnidirectional, so they do not waste space on facing arrows or facing handles.
+- Needs-driven resource jobs: agents drink/eat probabilistically as hunger/thirst fall, refill low basins with jars, hunt north-forest pigs for empty fire slots, and keep forest pig populations constant.
 
 There is intentionally no `.uproject`, Unreal module, Unreal actor class, or generated Unreal build target in this repo now.
 
@@ -88,8 +92,13 @@ Do not continue to Block 0B until the engine-independent direction is approved.
 20. Click a Roman agent and confirm the compact lower-left viewer panel appears with that agent's label as its title.
 21. Click a non-agent map object and confirm the `Agent Attributes` panel hides.
 22. Confirm the pane shows status, hunger `100/100`, and thirst `100/100` before identity details.
-23. Send `tools/control/SendEditorCommand.py ping --wait 5` from a hidden process and confirm the status reports the editor is alive.
-24. Send `tools/control/SendEditorCommand.py refresh --wait 5` from a hidden process and confirm the open editor process stays alive.
-25. Open `RunBlock0ASmoke.exe`.
-26. Confirm the console reports marker counts.
-27. Confirm it prints `Block 0A pure core smoke test passed.`
+23. Confirm the pane also shows brain, intent, job, and carried items before identity details.
+24. Let the simulation run and confirm hunger/thirst decrease over time.
+25. Confirm basin fill visibly lowers when agents drink and refills by jar trips when below 20%.
+26. Confirm fire slots show empty/raw/cooked states and cooked food amount shrinks when eaten.
+27. Confirm pigs remain populated in both forests, with Roman jobs hunting from the north forest.
+28. Send `tools/control/SendEditorCommand.py ping --wait 5` from a hidden process and confirm the status reports the editor is alive.
+29. Send `tools/control/SendEditorCommand.py refresh --wait 5` from a hidden process and confirm the open editor process stays alive.
+30. Open `RunBlock0ASmoke.exe`.
+31. Confirm the console reports marker counts.
+32. Confirm it prints `Block 0A pure core smoke test passed.`

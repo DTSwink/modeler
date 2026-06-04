@@ -1,7 +1,7 @@
 {
   "title": "Roman vs Ottoman - Block 0A",
   "block": "0A",
-  "updated": "2026-06-03",
+  "updated": "2026-06-04",
   "stage": "Engine-independent simulation layout authoring",
   "summary": "This authored layout is the source data for the next simulation blocks. Every zone, wall, and location here becomes future runtime simulation input.",
   "footer": "This viewer is the live authoring surface for future simulation inputs. Hover zones and locations to inspect labels, then save to update the current simulation layout.",
@@ -37,7 +37,7 @@
         "x": 3600,
         "y": 7600
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#4c9fd6",
       "priority": 0,
       "faction": "Neutral"
@@ -54,7 +54,7 @@
         "x": 3400,
         "y": 2300
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#bca278",
       "priority": 10,
       "faction": "Roman"
@@ -71,7 +71,7 @@
         "x": 3400,
         "y": 2300
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#b18e6a",
       "priority": 10,
       "faction": "Ottoman"
@@ -88,7 +88,7 @@
         "x": 2600,
         "y": 3200
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#5aa9de",
       "priority": 0,
       "faction": "Neutral"
@@ -105,7 +105,7 @@
         "x": 9800,
         "y": 2100
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#5f9341",
       "priority": 0,
       "faction": "Neutral"
@@ -122,7 +122,7 @@
         "x": 9800,
         "y": 2100
       },
-      "yawRadians": 0.0,
+      "yawRadians": 0,
       "color": "#4f8039",
       "priority": 0,
       "faction": "Neutral"
@@ -373,7 +373,7 @@
         "y": 4000
       },
       "radius": 110,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -386,8 +386,8 @@
         "y": 4100
       },
       "radius": 90,
-      "facingRadians": 0.0,
-      "slotCount": 1
+      "facingRadians": 0,
+      "slotCount": 3
     },
     {
       "id": "point-roman-basin",
@@ -399,8 +399,21 @@
         "y": 3600
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
+    },
+    {
+      "id": "point-roman-jar-location",
+      "type": "JarLocation",
+      "label": "Roman Jar Location",
+      "faction": "Roman",
+      "position": {
+        "x": 7460,
+        "y": 3860
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
     },
     {
       "id": "point-roman-watchtower",
@@ -412,7 +425,7 @@
         "y": 3050
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -425,7 +438,7 @@
         "y": 4700
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -438,7 +451,7 @@
         "y": 4000
       },
       "radius": 100,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -464,8 +477,8 @@
         "y": 4100
       },
       "radius": 90,
-      "facingRadians": 0.0,
-      "slotCount": 1
+      "facingRadians": 0,
+      "slotCount": 3
     },
     {
       "id": "point-ottoman-basin",
@@ -477,8 +490,21 @@
         "y": 3600
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
+    },
+    {
+      "id": "point-ottoman-jar-location",
+      "type": "JarLocation",
+      "label": "Ottoman Jar Location",
+      "faction": "Ottoman",
+      "position": {
+        "x": 16740,
+        "y": 3860
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
     },
     {
       "id": "point-ottoman-watchtower",
@@ -503,7 +529,7 @@
         "y": 4700
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -531,7 +557,7 @@
         "y": 4000
       },
       "radius": 110,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -544,8 +570,8 @@
         "y": 4100
       },
       "radius": 90,
-      "facingRadians": 0.0,
-      "slotCount": 1
+      "facingRadians": 0,
+      "slotCount": 3
     },
     {
       "id": "point-roman-basin",
@@ -557,8 +583,21 @@
         "y": 3600
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
+    },
+    {
+      "id": "point-roman-jar-location",
+      "type": "JarLocation",
+      "label": "Roman Jar Location",
+      "faction": "Roman",
+      "position": {
+        "x": 7460,
+        "y": 3860
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
     },
     {
       "id": "point-roman-watchtower",
@@ -570,7 +609,7 @@
         "y": 3050
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -583,7 +622,7 @@
         "y": 4700
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -596,7 +635,7 @@
         "y": 4000
       },
       "radius": 100,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {
@@ -622,8 +661,8 @@
         "y": 4100
       },
       "radius": 90,
-      "facingRadians": 0.0,
-      "slotCount": 1
+      "facingRadians": 0,
+      "slotCount": 3
     },
     {
       "id": "point-ottoman-basin",
@@ -635,8 +674,21 @@
         "y": 3600
       },
       "radius": 90,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
+    },
+    {
+      "id": "point-ottoman-jar-location",
+      "type": "JarLocation",
+      "label": "Ottoman Jar Location",
+      "faction": "Ottoman",
+      "position": {
+        "x": 16740,
+        "y": 3860
+      },
+      "radius": 90,
+      "slotCount": 1,
+      "facingRadians": 0
     },
     {
       "id": "point-ottoman-watchtower",
@@ -661,7 +713,7 @@
         "y": 4700
       },
       "radius": 80,
-      "facingRadians": 0.0,
+      "facingRadians": 0,
       "slotCount": 1
     },
     {

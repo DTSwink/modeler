@@ -34,6 +34,7 @@ enum class PointType : std::uint8_t
 	CommanderChair,
 	Fire,
 	Basin,
+	JarLocation,
 	WatchTower,
 	Bell,
 	BigAlarm,

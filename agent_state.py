@@ -22,12 +22,25 @@ def build_default_agent_state() -> dict:
         "health": {
             "status": AGENT_STATUS_VALUES[0],
         },
+        "brain": "NeedsWorker",
+        "intent": {
+            "action": "wander",
+            "reason": "initializing",
+        },
+        "job": None,
+        "inventory": {
+            "jar": False,
+            "jarFilled": False,
+            "rawPig": False,
+        },
+        "needCheckTimer": 0.0,
     }
 
 
 def normalize_agent_state(agent: dict) -> None:
     needs = agent.get("needs") if isinstance(agent.get("needs"), dict) else {}
     health = agent.get("health") if isinstance(agent.get("health"), dict) else {}
+    inventory = agent.get("inventory") if isinstance(agent.get("inventory"), dict) else {}
 
     needs["hunger"] = _bounded_int(needs.get("hunger"), default=100)
     needs["thirst"] = _bounded_int(needs.get("thirst"), default=100)
@@ -39,6 +52,14 @@ def normalize_agent_state(agent: dict) -> None:
 
     agent["needs"] = needs
     agent["health"] = health
+    agent.setdefault("brain", "NeedsWorker")
+    agent.setdefault("intent", {"action": "wander", "reason": "initializing"})
+    agent.setdefault("job", None)
+    inventory.setdefault("jar", False)
+    inventory.setdefault("jarFilled", False)
+    inventory.setdefault("rawPig", False)
+    agent["inventory"] = inventory
+    agent.setdefault("needCheckTimer", 0.0)
 
 
 def agent_snapshot_sections(agent: dict) -> list[dict]:
@@ -55,6 +76,15 @@ def agent_snapshot_sections(agent: dict) -> list[dict]:
             "rows": [
                 {"label": "Hunger", "value": agent["needs"]["hunger"], "kind": "meter", "maximum": 100},
                 {"label": "Thirst", "value": agent["needs"]["thirst"], "kind": "meter", "maximum": 100},
+            ],
+        },
+        {
+            "title": "Decision",
+            "rows": [
+                {"label": "Brain", "value": agent["brain"]},
+                {"label": "Intent", "value": _format_intent(agent.get("intent"))},
+                {"label": "Job", "value": _format_job(agent.get("job"))},
+                {"label": "Carrying", "value": _format_inventory(agent.get("inventory"))},
             ],
         },
         {
@@ -86,7 +116,7 @@ def _bounded_int(value, *, default: int) -> int:
         numeric = float(value)
     except (TypeError, ValueError):
         numeric = float(default)
-    return int(round(clamp(numeric, 0.0, 100.0)))
+    return clamp(numeric, 0.0, 100.0)
 
 
 def _format_angle(angle_radians: float) -> str:
@@ -95,3 +125,40 @@ def _format_angle(angle_radians: float) -> str:
 
 def _format_float(value: float, *, digits: int = 1) -> str:
     return f"{float(value):.{digits}f}"
+
+
+def _format_intent(intent) -> str:
+    if not isinstance(intent, dict):
+        return "None"
+    action = str(intent.get("action", "none"))
+    target = intent.get("target")
+    reason = intent.get("reason")
+    parts = [action]
+    if target:
+        parts.append(f"to {target}")
+    if reason:
+        parts.append(f"({reason})")
+    return " ".join(parts)
+
+
+def _format_job(job) -> str:
+    if not isinstance(job, dict):
+        return "None"
+    job_type = str(job.get("type", "unknown"))
+    phase = job.get("phase")
+    if phase:
+        return f"{job_type} / {phase}"
+    return job_type
+
+
+def _format_inventory(inventory) -> str:
+    if not isinstance(inventory, dict):
+        return "Empty"
+    carried = []
+    if inventory.get("jarFilled"):
+        carried.append("full jar")
+    elif inventory.get("jar"):
+        carried.append("jar")
+    if inventory.get("rawPig"):
+        carried.append("raw pig")
+    return ", ".join(carried) if carried else "Empty"

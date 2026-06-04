@@ -77,10 +77,12 @@ Important files:
 - `ModelerLayoutEditor.pyw`: primary native local editor for the latest sim state.
 - `agent_panel.py`: isolated reloadable Tk widget for the selected-agent attribute panel.
 - `agent_state.py`: isolated headless agent-state defaults and attribute-snapshot helpers.
+- `agent_brains.py`: isolated headless decision/job layer for needs-driven resource behavior.
 - `editor_command_bridge.py`: lightweight file-command bridge used to control the already-open editor without focusing it.
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
 - `layout_document.py`: isolated authored-layout load/save/normalize helpers shared by the native editor.
+- `sim_resources.py`: isolated runtime resource state for basins, fire slots, jar jobs, and forest pig populations.
 - `sim_geometry.py`: isolated headless geometry helpers shared by the editor and runtime.
 - `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
 - `include/modeler/sim/SimTypes.h`: shared layout enums.
@@ -132,6 +134,7 @@ Generated folders such as `Build`, `Out`, `Binaries`, `Intermediate`, `Saved`, a
 - `CommanderChair`
 - `Fire`
 - `Basin`
+- `JarLocation`
 - `WatchTower`
 - `Bell`
 - `BigAlarm`
@@ -215,8 +218,14 @@ The editor currently supports:
 - Agent panel rows do not use visible `Attribute` / `Value` headers. The space is reserved for useful data, with identity details placed at the end of the list.
 - The old footer selection text is hidden while an agent is selected so it does not compete with the agent attribute panel.
 - Roman agents now carry modular headless `needs` and `health` state, starting with `hunger`, `thirst`, and `status`.
+- Roman agents now carry modular `brain`, `intent`, `job`, and `inventory` state so resource decisions are inspectable instead of hidden inside movement code.
+- Basins have runtime capacity, drawn as blue fill inside the basin marker. Drinking visibly depletes the fill.
+- Fires have runtime pig slots. Slots are empty, raw, or cooked; raw pigs cook for 30 seconds, cooked pig slots can be eaten, and food amount visibly shrinks from right to left.
+- Fire, basin, and jar-location markers are omnidirectional resources. They do not draw facing arrows, facing handles, or facing inspector controls.
+- Jar-location markers are authored camp points where agents pick up and drop off jars for water refill jobs.
+- North and south forests maintain constant pig populations. Current Roman resource jobs hunt in the north forest, and killed pigs respawn far from the kill position.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
-- Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
+- Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 
 `Refresh App` now reloads `agent_state.py` and `agent_panel.py` in-process with `importlib.reload`, rebuilds the affected widget, and redraws the current window. Full edits to `ModelerLayoutEditor.pyw` still require one real editor restart because the main Tk shell owns bindings, menus, layout scaffolding, and process-level app identity. Future frequently edited UI should be extracted into reloadable modules so small changes can apply without closing the current editor.
 
@@ -238,6 +247,8 @@ The important interaction rule is that simulation and authoring are layered, not
 The important implementation rule is that even if the current native editor hosts several responsibilities in one app, each new system added to it should still be written as if it may be extracted, upgraded, or swapped later. Avoid tightly coupling saving, camera control, layout editing, agent stepping, rendering, and future gameplay rules into one indivisible block.
 
 The current agent-attributes pass follows that rule on purpose: hunger, thirst, and status live in headless agent state first, while the Tk app only renders a compact lower-left scrollable viewer snapshot for the selected agent. When needs logic gets smarter later, the runtime model should change in isolation and the UI should only need thin presentation updates.
+
+The first needs/resource pass follows the same rule: resource quantities live in `sim_resources.py`, agent choice and job phases live in `agent_brains.py`, and the editor only visualizes the current state. The behavior is deliberately direct-steering and collision-free for now. Do not mix future pathfinding, perception, alarms, orders, combat, or infirmary logic into this resource block; add those as separate systems behind explicit state handoffs.
 
 For UI review work, prefer user-provided screenshots and background or headless checks before foreground launches whenever possible. That keeps the active user session undisturbed.
 

@@ -4,6 +4,8 @@ import math
 import random
 from copy import deepcopy
 
+import agent_brains
+import sim_resources
 from agent_state import build_default_agent_state, normalize_agent_state
 from sim_geometry import clamp, distance, local_to_world
 
@@ -24,10 +26,12 @@ class RomanSimulationRuntime:
         self.running = False
         self.speed_multiplier = 1.0
         self.time_seconds = 0.0
+        self.resources = sim_resources.build_resource_state(layout, self.rng)
         self.agents = self._build_initial_agents(rng_seed)
 
     def attach_layout(self, layout: dict) -> None:
         self._layout = layout
+        sim_resources.sync_resource_state(self._layout, self.resources, self.rng)
         for agent in self.agents:
             normalize_agent_state(agent)
         self.clamp_all_agents_to_bounds()
@@ -83,28 +87,20 @@ class RomanSimulationRuntime:
             return False
         any_changed = False
         self.time_seconds += sim_dt
+        sim_resources.tick_resources(self.resources, sim_dt)
         for agent in self.agents:
+            normalize_agent_state(agent)
+            agent_brains.deplete_needs(agent, sim_dt)
             if dragged_agent_id == agent["id"]:
                 continue
-            agent["decisionTimer"] -= sim_dt
-            if agent["decisionTimer"] <= 0.0:
-                agent["targetHeadingRadians"] = agent["headingRadians"] + self.rng.uniform(-1.7, 1.7)
-                agent["decisionTimer"] = self.rng.uniform(0.35, 1.4)
-            agent["headingRadians"] = self._step_angle_towards(
-                agent["headingRadians"],
-                agent["targetHeadingRadians"],
-                agent["turnRate"] * sim_dt,
-            )
-            proposed = {
-                "x": agent["position"]["x"] + math.cos(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
-                "y": agent["position"]["y"] + math.sin(agent["headingRadians"]) * agent["moveSpeed"] * sim_dt,
+            context = {
+                "layout": self._layout,
+                "resources": self.resources,
+                "rng": self.rng,
+                "dt": sim_dt,
+                "clamp_agent_position": self.clamp_agent_position,
             }
-            clamped, hit_x, hit_y = self.clamp_agent_position(agent, proposed)
-            agent["position"] = clamped
-            if hit_x or hit_y:
-                agent["targetHeadingRadians"] = self.rng.uniform(0.0, math.tau)
-                agent["decisionTimer"] = self.rng.uniform(0.12, 0.35)
-            any_changed = True
+            any_changed = agent_brains.advance_agent(agent, sim_dt, context) or any_changed
         return any_changed
 
     def _build_initial_agents(self, rng_seed: int) -> list[dict]:
