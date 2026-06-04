@@ -28,6 +28,8 @@ class RomanSimulationRuntime:
         self.time_seconds = 0.0
         self.resources = sim_resources.build_resource_state(layout, self.rng)
         self.agents = self._build_initial_agents(rng_seed)
+        self._interaction_events: list[dict] = []
+        self._next_interaction_id = 1
 
     def attach_layout(self, layout: dict) -> None:
         self._layout = layout
@@ -87,7 +89,7 @@ class RomanSimulationRuntime:
             return False
         any_changed = False
         self.time_seconds += sim_dt
-        sim_resources.tick_resources(self.resources, sim_dt)
+        sim_resources.tick_resources(self.resources, sim_dt, layout=self._layout, rng=self.rng)
         for agent in self.agents:
             normalize_agent_state(agent)
             agent_brains.deplete_needs(agent, sim_dt)
@@ -99,9 +101,39 @@ class RomanSimulationRuntime:
                 "rng": self.rng,
                 "dt": sim_dt,
                 "clamp_agent_position": self.clamp_agent_position,
+                "emit_interaction": self.emit_interaction,
             }
             any_changed = agent_brains.advance_agent(agent, sim_dt, context) or any_changed
         return any_changed
+
+    def emit_interaction(
+        self,
+        agent: dict,
+        kind: str,
+        *,
+        target_label: str,
+        position: dict,
+        target_kind: str = "resource",
+    ) -> None:
+        self._interaction_events.append(
+            {
+                "id": self._next_interaction_id,
+                "simTime": self.time_seconds,
+                "agentId": agent["id"],
+                "agentLabel": agent["label"],
+                "kind": kind,
+                "target": target_label,
+                "targetKind": target_kind,
+                "position": deepcopy(position),
+                "agentPosition": deepcopy(agent["position"]),
+            }
+        )
+        self._next_interaction_id += 1
+
+    def consume_interaction_events(self) -> list[dict]:
+        events = self._interaction_events
+        self._interaction_events = []
+        return events
 
     def _build_initial_agents(self, rng_seed: int) -> list[dict]:
         zone = self.spawn_zone()

@@ -17,7 +17,7 @@
     },
     "drawLayout": true,
     "drawGrid": true,
-    "drawLabels": false
+    "drawLabels": true
   },
   "editor": {
     "snapToGrid": true,
@@ -25,10 +25,10 @@
     "labelFontSize": 8,
     "labelMode": "Hover",
     "savedView": {
-      "zoom": 2.5758,
+      "zoom": 1.637,
       "center": {
-        "x": 8179.74,
-        "y": 3127.18
+        "x": 10573.9,
+        "y": 4000.0
       }
     }
   },
@@ -416,8 +416,8 @@
       "type": "JarLocation",
       "faction": "Roman",
       "position": {
-        "x": 6290,
-        "y": 3250
+        "x": 5500,
+        "y": 2940
       },
       "radius": 162.2765862257905,
       "facingRadians": 0,
@@ -442,10 +442,10 @@
       "type": "SpawnPoint",
       "faction": "Roman",
       "position": {
-        "x": 8000,
-        "y": 7300
+        "x": 6740,
+        "y": 600
       },
-      "radius": 80,
+      "radius": 120.48231873965243,
       "facingRadians": 0,
       "slotCount": 1
     },
@@ -600,8 +600,8 @@
       "type": "JarLocation",
       "faction": "Roman",
       "position": {
-        "x": 6290,
-        "y": 3250
+        "x": 5500,
+        "y": 2940
       },
       "radius": 162.2765862257905,
       "facingRadians": 0,
@@ -626,10 +626,10 @@
       "type": "SpawnPoint",
       "faction": "Roman",
       "position": {
-        "x": 8000,
-        "y": 7300
+        "x": 6740,
+        "y": 600
       },
-      "radius": 80,
+      "radius": 120.48231873965243,
       "facingRadians": 0,
       "slotCount": 1
     },

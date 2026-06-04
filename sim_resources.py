@@ -22,6 +22,11 @@ WATER_THIRST_RESTORE = 45.0
 
 PIGS_PER_FOREST = 6
 PIG_RESPAWN_ATTEMPTS = 32
+PIG_MOVE_SPEED_MIN = 80.0
+PIG_MOVE_SPEED_MAX = 135.0
+PIG_TURN_RATE = 2.4
+PIG_DECISION_INTERVAL_MIN = 0.65
+PIG_DECISION_INTERVAL_MAX = 2.0
 
 
 def build_resource_state(layout: dict, rng: random.Random) -> dict:
@@ -75,7 +80,7 @@ def sync_resource_state(layout: dict, state: dict, rng: random.Random) -> None:
     sync_forest_pigs(layout, state, rng)
 
 
-def tick_resources(state: dict, dt: float) -> None:
+def tick_resources(state: dict, dt: float, *, layout: dict | None = None, rng: random.Random | None = None) -> None:
     for fire_state in state.get("fires", {}).values():
         for slot in fire_state.get("slots", []):
             if slot["state"] != "raw":
@@ -84,6 +89,8 @@ def tick_resources(state: dict, dt: float) -> None:
             if slot["cookRemaining"] <= 0.0:
                 slot["state"] = "cooked"
                 slot["amount"] = max(1.0, float(slot.get("amount", 100.0)))
+    if layout is not None and rng is not None:
+        move_pigs(layout, state, dt, rng)
 
 
 def normalize_fire_slots(fire_state: dict, slot_count: int) -> None:
@@ -267,6 +274,8 @@ def sync_forest_pigs(layout: dict, state: dict, rng: random.Random) -> None:
     forests = forest_zones(layout)
     forest_ids = {forest["id"] for forest in forests}
     state["pigs"] = [pig for pig in state.get("pigs", []) if pig.get("forestId") in forest_ids]
+    for pig in state["pigs"]:
+        normalize_pig_state(pig, rng)
     for forest in forests:
         while sum(1 for pig in state["pigs"] if pig["forestId"] == forest["id"]) < PIGS_PER_FOREST:
             state["pigs"].append(spawn_pig(layout, state, rng, forest, None))
@@ -290,10 +299,54 @@ def spawn_pig(layout: dict, state: dict, rng: random.Random, forest: dict, far_f
     return {
         "id": pig_id,
         "label": f"Pig {pig_id.split('-')[-1]}",
+        "kind": "pig",
         "forestId": forest["id"],
         "position": best,
         "radius": 75.0,
+        "headingRadians": rng.uniform(0.0, math.tau),
+        "targetHeadingRadians": rng.uniform(0.0, math.tau),
+        "moveSpeed": rng.uniform(PIG_MOVE_SPEED_MIN, PIG_MOVE_SPEED_MAX),
+        "decisionTimer": rng.uniform(PIG_DECISION_INTERVAL_MIN, PIG_DECISION_INTERVAL_MAX),
     }
+
+
+def normalize_pig_state(pig: dict, rng: random.Random) -> None:
+    pig.setdefault("kind", "pig")
+    pig.setdefault("radius", 75.0)
+    pig.setdefault("headingRadians", rng.uniform(0.0, math.tau))
+    pig.setdefault("targetHeadingRadians", pig["headingRadians"])
+    pig.setdefault("moveSpeed", rng.uniform(PIG_MOVE_SPEED_MIN, PIG_MOVE_SPEED_MAX))
+    pig.setdefault("decisionTimer", rng.uniform(PIG_DECISION_INTERVAL_MIN, PIG_DECISION_INTERVAL_MAX))
+
+
+def move_pigs(layout: dict, state: dict, dt: float, rng: random.Random) -> None:
+    forests_by_id = {forest["id"]: forest for forest in forest_zones(layout)}
+    for pig in state.get("pigs", []):
+        forest = forests_by_id.get(pig.get("forestId"))
+        if forest is None:
+            continue
+        normalize_pig_state(pig, rng)
+        pig["decisionTimer"] -= dt
+        if pig["decisionTimer"] <= 0.0:
+            pig["targetHeadingRadians"] = pig["headingRadians"] + rng.uniform(-1.4, 1.4)
+            pig["decisionTimer"] = rng.uniform(PIG_DECISION_INTERVAL_MIN, PIG_DECISION_INTERVAL_MAX)
+        pig["headingRadians"] = step_angle_towards(pig["headingRadians"], pig["targetHeadingRadians"], PIG_TURN_RATE * dt)
+        proposed = {
+            "x": pig["position"]["x"] + math.cos(pig["headingRadians"]) * pig["moveSpeed"] * dt,
+            "y": pig["position"]["y"] + math.sin(pig["headingRadians"]) * pig["moveSpeed"] * dt,
+        }
+        clamped = closest_point_in_zone(proposed, forest)
+        pig["position"] = clamped
+        if distance(proposed, clamped) > 0.5:
+            pig["targetHeadingRadians"] = rng.uniform(0.0, math.tau)
+            pig["decisionTimer"] = rng.uniform(0.15, 0.45)
+
+
+def step_angle_towards(current: float, target: float, max_delta: float) -> float:
+    delta = math.atan2(math.sin(target - current), math.cos(target - current))
+    if abs(delta) <= max_delta:
+        return target
+    return current + math.copysign(max_delta, delta)
 
 
 def distance_to_nearest_pig(position: dict, state: dict) -> float:
@@ -325,6 +378,40 @@ def nearest_north_forest_pig(layout: dict, state: dict, position: dict) -> dict 
     if not pigs:
         return None
     return min(pigs, key=lambda pig: distance(position, pig["position"]))
+
+
+def nearest_attack_target(layout: dict, state: dict, position: dict, target_filter: dict) -> dict | None:
+    if target_filter.get("kind") == "pig":
+        if target_filter.get("forest") == "north":
+            return nearest_north_forest_pig(layout, state, position)
+        pigs = state.get("pigs", [])
+        if not pigs:
+            return None
+        return min(pigs, key=lambda pig: distance(position, pig["position"]))
+    return None
+
+
+def attack_target_by_ref(layout: dict, state: dict, target_ref: dict | None) -> dict | None:
+    if not isinstance(target_ref, dict):
+        return None
+    if target_ref.get("kind") == "pig":
+        return next((pig for pig in state.get("pigs", []) if pig["id"] == target_ref.get("id")), None)
+    return None
+
+
+def attack_target_ref(target: dict) -> dict:
+    return {
+        "kind": target.get("kind", "unknown"),
+        "id": target["id"],
+        "label": target.get("label", target["id"]),
+        "radius": float(target.get("radius", 75.0)),
+    }
+
+
+def defeat_attack_target(layout: dict, state: dict, target_ref: dict, rng: random.Random) -> dict | None:
+    if target_ref.get("kind") == "pig":
+        return kill_and_respawn_pig(layout, state, target_ref.get("id"), rng)
+    return None
 
 
 def kill_and_respawn_pig(layout: dict, state: dict, pig_id: str, rng: random.Random) -> dict | None:

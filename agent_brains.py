@@ -132,17 +132,27 @@ def assign_water_job(agent: dict, layout: dict, basin: dict) -> None:
 
 
 def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Random, fire: dict) -> None:
-    pig = sim_resources.nearest_north_forest_pig(layout, resources, agent["position"])
-    if pig is None:
+    target = sim_resources.nearest_attack_target(
+        layout,
+        resources,
+        agent["position"],
+        {"kind": "pig", "forest": "north"},
+    )
+    if target is None:
         agent["intent"] = {"action": "wander", "reason": "no north forest pig available"}
         return
     agent["job"] = {
-        "type": "hunt_pig",
-        "phase": "to_pig",
+        "type": "hunt_food",
+        "phase": "attack_target",
         "fireId": fire["id"],
-        "pigId": pig["id"],
+        "attack": {
+            "target": sim_resources.attack_target_ref(target),
+            "reacquire": {"kind": "pig", "forest": "north"},
+            "reason": "hunt pig for fire",
+            "onDefeat": "carry_raw_pig",
+        },
     }
-    agent["intent"] = {"action": "go_to", "target": pig["label"], "reason": "fire has an empty slot"}
+    agent["intent"] = {"action": "go_to", "target": target["label"], "reason": "fire has an empty slot"}
 
 
 def advance_job(agent: dict, dt: float, context: dict) -> bool:
@@ -153,7 +163,7 @@ def advance_job(agent: dict, dt: float, context: dict) -> bool:
         return advance_eat_job(agent, dt, context)
     if job_type == "fetch_water":
         return advance_water_job(agent, dt, context)
-    if job_type == "hunt_pig":
+    if job_type in {"hunt_food", "hunt_pig"}:
         return advance_hunt_job(agent, dt, context)
     agent["job"] = None
     return False
@@ -170,6 +180,7 @@ def advance_drink_job(agent: dict, dt: float, context: dict) -> bool:
     consumed = sim_resources.drink_from_basin(context["resources"], basin["id"])
     if consumed > 0.0:
         agent["needs"]["thirst"] = clamp(agent["needs"]["thirst"] + sim_resources.WATER_THIRST_RESTORE, 0.0, 100.0)
+        emit_interaction(context, agent, "drink", basin, "Basin")
     if sim_resources.is_basin_low(context["resources"], basin["id"]):
         assign_water_job(agent, context["layout"], basin)
     else:
@@ -188,6 +199,7 @@ def advance_eat_job(agent: dict, dt: float, context: dict) -> bool:
     eaten = sim_resources.eat_cooked_food(context["resources"], fire["id"])
     if eaten > 0.0:
         agent["needs"]["hunger"] = clamp(agent["needs"]["hunger"] + sim_resources.FOOD_HUNGER_RESTORE, 0.0, 100.0)
+        emit_interaction(context, agent, "eat", fire, "Fire")
     if sim_resources.fire_has_empty_slot(context["resources"], fire["id"]):
         assign_hunt_job(agent, context["layout"], context["resources"], context["rng"], fire)
     else:
@@ -212,6 +224,7 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
             return move_towards(agent, jar_location["position"], dt, context)
         agent["inventory"]["jar"] = True
         agent["inventory"]["jarFilled"] = False
+        emit_interaction(context, agent, "pick_up_jar", jar_location or basin, "Jar")
         job["phase"] = "to_water"
         return True
 
@@ -225,6 +238,7 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
             return move_towards(agent, water_position, dt, context)
         agent["inventory"]["jar"] = True
         agent["inventory"]["jarFilled"] = True
+        emit_interaction(context, agent, "fill_jar", {"label": "Water source", "position": water_position}, "Water")
         job["phase"] = "to_basin"
         return True
 
@@ -232,7 +246,9 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
         if not at_point(agent, basin):
             agent["intent"] = {"action": "go_to", "target": basin["label"], "reason": "fill basin"}
             return move_towards(agent, basin["position"], dt, context)
-        sim_resources.fill_basin(resources, basin["id"])
+        filled = sim_resources.fill_basin(resources, basin["id"])
+        if filled > 0.0:
+            emit_interaction(context, agent, "fill_basin", basin, "Basin")
         agent["inventory"]["jarFilled"] = False
         job["trips"] = int(job.get("trips", 0)) + 1
         if sim_resources.is_basin_refilled(resources, basin["id"]) or job["trips"] >= sim_resources.WATER_TRIP_LIMIT:
@@ -247,6 +263,7 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
             return move_towards(agent, jar_location["position"], dt, context)
         agent["inventory"]["jar"] = False
         agent["inventory"]["jarFilled"] = False
+        emit_interaction(context, agent, "drop_jar", jar_location or basin, "Jar")
         finish_job(agent, "water job complete")
         return True
 
@@ -261,25 +278,31 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
     resources = context["resources"]
     rng = context["rng"]
     job = agent["job"]
+    normalize_attack_job(job)
     fire = sim_resources.point_by_id(layout, job.get("fireId"))
     if fire is None:
         agent["job"] = None
         return False
 
-    if job.get("phase") == "to_pig":
-        pig = next((item for item in resources.get("pigs", []) if item["id"] == job.get("pigId")), None)
-        if pig is None:
-            pig = sim_resources.nearest_north_forest_pig(layout, resources, agent["position"])
-            if pig is None:
-                finish_job(agent, "no pig available")
+    if job.get("phase") == "attack_target":
+        attack = job.get("attack", {})
+        target_ref = attack.get("target")
+        target = sim_resources.attack_target_by_ref(layout, resources, target_ref)
+        if target is None:
+            target = sim_resources.nearest_attack_target(layout, resources, agent["position"], attack.get("reacquire", {}))
+            if target is None:
+                finish_job(agent, "no attack target available")
                 return False
-            job["pigId"] = pig["id"]
-        if not at_position(agent, pig["position"], agent["radius"] + pig["radius"] + ARRIVAL_EXTRA_MARGIN):
-            agent["intent"] = {"action": "go_to", "target": pig["label"], "reason": "hunt pig for fire"}
-            return move_towards(agent, pig["position"], dt, context)
-        killed = sim_resources.kill_and_respawn_pig(layout, resources, pig["id"], rng)
-        if killed is not None:
+            target_ref = sim_resources.attack_target_ref(target)
+            attack["target"] = target_ref
+        attack_radius = agent["radius"] + float(target.get("radius", target_ref.get("radius", 75.0))) + ARRIVAL_EXTRA_MARGIN
+        if not at_position(agent, target["position"], attack_radius):
+            agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": attack.get("reason", "attack target")}
+            return move_towards(agent, target["position"], dt, context)
+        defeated = sim_resources.defeat_attack_target(layout, resources, target_ref, rng)
+        if defeated is not None and attack.get("onDefeat") == "carry_raw_pig":
             agent["inventory"]["rawPig"] = True
+            emit_interaction(context, agent, "attack_target", defeated, defeated.get("kind", "target"))
         job["phase"] = "to_fire"
         return True
 
@@ -289,6 +312,7 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
             return move_towards(agent, fire["position"], dt, context)
         if agent["inventory"].get("rawPig") and sim_resources.place_raw_pig(resources, fire["id"]):
             agent["inventory"]["rawPig"] = False
+            emit_interaction(context, agent, "place_raw_pig", fire, "Fire")
             finish_job(agent, "placed raw pig on fire")
         else:
             agent["inventory"]["rawPig"] = False
@@ -297,6 +321,38 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
 
     finish_job(agent, "hunt job complete")
     return True
+
+
+def normalize_attack_job(job: dict) -> None:
+    if job.get("type") != "hunt_pig":
+        return
+    job["type"] = "hunt_food"
+    job["phase"] = "attack_target"
+    job["attack"] = {
+        "target": {
+            "kind": "pig",
+            "id": job.get("pigId"),
+            "label": job.get("pigId") or "Pig",
+            "radius": 75.0,
+        },
+        "reacquire": {"kind": "pig", "forest": "north"},
+        "reason": "hunt pig for fire",
+        "onDefeat": "carry_raw_pig",
+    }
+
+
+def emit_interaction(context: dict, agent: dict, kind: str, target: dict, target_kind: str) -> None:
+    callback = context.get("emit_interaction")
+    if callback is None:
+        return
+    position = target.get("position", agent["position"])
+    callback(
+        agent,
+        kind,
+        target_label=target.get("label", target_kind),
+        position=position,
+        target_kind=target_kind,
+    )
 
 
 def finish_job(agent: dict, reason: str) -> None:

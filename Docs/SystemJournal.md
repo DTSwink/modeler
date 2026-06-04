@@ -223,9 +223,12 @@ The editor currently supports:
 - Roman agents now carry modular `brain`, `intent`, `job`, and `inventory` state so resource decisions are inspectable instead of hidden inside movement code.
 - Basins have runtime capacity, drawn as blue fill inside the basin marker. Drinking visibly depletes the fill.
 - Fires have runtime pig slots. Slots are empty, raw, or cooked; raw pigs cook for 30 seconds, cooked pig slots can be eaten, and food amount visibly shrinks from right to left.
+- Fire-slot colors are semantic: raw pig is yellow while cooked pig is maroon.
 - Fire, basin, and jar-location markers are omnidirectional resources. They do not draw facing arrows, facing handles, or facing inspector controls.
 - Jar-location markers are authored camp points where agents pick up and drop off jars for water refill jobs.
-- North and south forests maintain constant pig populations. Current Roman resource jobs hunt in the north forest, and killed pigs respawn far from the kill position.
+- North and south forests maintain constant moving pig populations. Current Roman food jobs hunt in the north forest, and killed pigs respawn far from the kill position.
+- Agent interactions emit small runtime events. The editor visualizes those events as short pulses for drinking, eating, jar handling, basin filling, attacking a target, and placing raw pig on the fire.
+- Pig hunting now uses a generic attack-target phase in `agent_brains.py` with target lookup/defeat helpers in `sim_resources.py`. Pigs are the first target kind, but the shape is meant to support intruder hunting later without rewriting the chase/attack loop.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 

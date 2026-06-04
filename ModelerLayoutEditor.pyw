@@ -66,6 +66,7 @@ HANDLE_TAG = "selection_handle"
 FRAME_TAG = "world_frame"
 SIMULATION_FRAME_MS = 16
 RENDER_FRAME_INTERVAL_SECONDS = 1.0 / 30.0
+INTERACTION_PULSE_DURATION_SECONDS = 0.9
 SIMULATION_SPEED_OPTIONS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
 ROMAN_SIMULATION_ZONE_ID = "zone-roman-camp"
 ROMAN_AGENT_COUNT = 5
@@ -100,6 +101,16 @@ LOCATION_TYPE_COLORS = {
     "JarLocation": "#d2ad58",
     "WatchTower": "#8257e5",
     "Gate": "",
+}
+INTERACTION_COLORS = {
+    "drink": "#2f6dff",
+    "eat": "#7a1f19",
+    "pick_up_jar": "#d2ad58",
+    "fill_jar": "#3e8bff",
+    "fill_basin": "#2f6dff",
+    "drop_jar": "#d2ad58",
+    "attack_target": "#d84f35",
+    "place_raw_pig": "#f2d62d",
 }
 
 ZONE_TYPES = [
@@ -279,6 +290,7 @@ class LayoutEditorApp:
         self.last_simulation_tick = time.perf_counter()
         self.last_canvas_render = 0.0
         self.last_agent_details_refresh = 0.0
+        self.interaction_pulses: list[dict] = []
         self.spacebar_toggle_pending = False
         self.restore_saved_view_state()
         self.simulation = RomanSimulationRuntime(
@@ -736,7 +748,8 @@ class LayoutEditorApp:
         changed = False
         if self.simulation.running and real_dt > 0.0:
             changed = self.advance_simulation(real_dt * self.simulation.speed_multiplier)
-        if changed:
+        self.prune_interaction_pulses(now)
+        if changed or self.interaction_pulses:
             if now - self.last_canvas_render >= RENDER_FRAME_INTERVAL_SECONDS:
                 self.last_canvas_render = now
                 self.render_canvas()
@@ -747,8 +760,27 @@ class LayoutEditorApp:
     def advance_simulation(self, sim_dt: float) -> bool:
         dragged_agent_id = self.drag_state.get("id") if self.drag_state and self.drag_state.get("type") == "move-agent" else None
         any_changed = self.simulation.advance(sim_dt, dragged_agent_id=dragged_agent_id)
+        self.collect_interaction_events()
         self.update_simulation_summary()
-        return any_changed
+        return any_changed or bool(self.interaction_pulses)
+
+    def collect_interaction_events(self) -> None:
+        now = time.perf_counter()
+        for event in self.simulation.consume_interaction_events():
+            event["startedAt"] = now
+            self.interaction_pulses.append(event)
+        if len(self.interaction_pulses) > 80:
+            self.interaction_pulses = self.interaction_pulses[-80:]
+
+    def prune_interaction_pulses(self, now: float | None = None) -> None:
+        if not self.interaction_pulses:
+            return
+        now = time.perf_counter() if now is None else now
+        self.interaction_pulses = [
+            pulse
+            for pulse in self.interaction_pulses
+            if now - pulse.get("startedAt", now) < INTERACTION_PULSE_DURATION_SECONDS
+        ]
 
     def agent_visual_radius_pixels(self, agent: dict) -> float:
         return max(6.0, agent["radius"] * self.view["scale"] * 0.11)
@@ -1769,6 +1801,7 @@ class LayoutEditorApp:
                 self.draw_pig(pig)
             for agent in self.simulation.agents:
                 self.draw_agent(agent)
+            self.draw_interaction_pulses()
             self.draw_point_labels()
             self.draw_agent_labels()
 
@@ -1897,6 +1930,64 @@ class LayoutEditorApp:
         color = "#294fb6" if self.selected_kind == "wall" and self.selected_id == wall["id"] else "#6c665b"
         width = max(4, wall["thickness"] * self.view["scale"] * 0.32)
         self.canvas.create_line(a["x"], a["y"], b["x"], b["y"], fill=color, width=width, capstyle=tk.ROUND)
+
+    def draw_interaction_pulses(self) -> None:
+        if not self.interaction_pulses:
+            return
+        now = time.perf_counter()
+        self.prune_interaction_pulses(now)
+        for pulse in self.interaction_pulses:
+            position = pulse.get("position")
+            if not isinstance(position, dict):
+                continue
+            progress = clamp((now - pulse.get("startedAt", now)) / INTERACTION_PULSE_DURATION_SECONDS, 0.0, 1.0)
+            color = blend_hex(INTERACTION_COLORS.get(pulse.get("kind"), "#e3bf47"), CANVAS_BACKGROUND, progress * 0.74)
+            target_screen = self.world_to_canvas(position)
+            agent_position = pulse.get("agentPosition")
+            if isinstance(agent_position, dict):
+                agent_screen = self.world_to_canvas(agent_position)
+                if distance(agent_screen, target_screen) > 8.0:
+                    self.canvas.create_line(
+                        agent_screen["x"],
+                        agent_screen["y"],
+                        target_screen["x"],
+                        target_screen["y"],
+                        fill=color,
+                        width=max(1, int(3 - progress)),
+                        dash=(5, 4),
+                        tags=("interaction_pulse",),
+                    )
+            base_radius = max(8.0, 40.0 * self.view["scale"])
+            ring_radius = base_radius + 30.0 * progress
+            self.canvas.create_oval(
+                target_screen["x"] - ring_radius,
+                target_screen["y"] - ring_radius,
+                target_screen["x"] + ring_radius,
+                target_screen["y"] + ring_radius,
+                fill="",
+                outline=color,
+                width=max(1, int(4 - 2 * progress)),
+                tags=("interaction_pulse",),
+            )
+            tick_radius = max(3.0, base_radius * 0.32)
+            self.canvas.create_line(
+                target_screen["x"] - tick_radius,
+                target_screen["y"],
+                target_screen["x"] + tick_radius,
+                target_screen["y"],
+                fill=color,
+                width=2,
+                tags=("interaction_pulse",),
+            )
+            self.canvas.create_line(
+                target_screen["x"],
+                target_screen["y"] - tick_radius,
+                target_screen["x"],
+                target_screen["y"] + tick_radius,
+                fill=color,
+                width=2,
+                tags=("interaction_pulse",),
+            )
 
     def draw_pig(self, pig: dict) -> None:
         screen = self.world_to_canvas(pig["position"])
@@ -2052,7 +2143,7 @@ class LayoutEditorApp:
         amount_fraction = clamp(float(slot.get("amount", 0.0)) / 100.0, 0.0, 1.0)
         if state == "empty" or amount_fraction <= 0.0:
             return
-        fill = "#9f5b05" if state == "raw" else "#f2e92d"
+        fill = "#f2d62d" if state == "raw" else "#7a1f19"
         self.canvas.create_rectangle(
             x + 2,
             y + 2,
