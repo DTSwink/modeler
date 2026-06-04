@@ -180,7 +180,7 @@ def _format_inventory(inventory) -> str:
     elif inventory.get("jar"):
         carried.append("jar")
     if inventory.get("rawPig"):
-        carried.append("raw pig")
+        carried.append(str(inventory.get("rawPigLabel") or "raw pig"))
     return ", ".join(carried) if carried else "Empty"
 
 

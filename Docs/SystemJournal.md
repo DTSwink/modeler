@@ -85,6 +85,7 @@ Important files:
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
 - `layout_document.py`: isolated authored-layout load/save/normalize helpers, including non-destructive save merging, shared by the native editor.
 - `living_body.py`: isolated headless limb/body helpers shared by agents and future living targets.
+- `perception.py`: isolated headless vision-cone helpers shared by agent decisions and editor debug drawing.
 - `sim_resources.py`: isolated runtime resource state for basins, fire slots, jar jobs, and forest pig populations.
 - `sim_geometry.py`: isolated headless geometry helpers shared by the editor and runtime.
 - `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
@@ -233,6 +234,9 @@ The editor currently supports:
 - Pig hunting now uses a generic attack-target phase in `agent_brains.py` with target lookup/defeat helpers in `sim_resources.py`. Pigs are the first target kind, but the shape is meant to support intruder hunting later without rewriting the chase/attack loop.
 - Attack events carry `targetLimb`; current attacks default to torso for every target.
 - Dead agents render with a somber dark body/core color so death is visually obvious in the scene.
+- Agent resource/contact checks use tighter interaction radii than their authored visual radii, so agents must get close before drinking, eating, filling, picking up, dropping off, or attacking.
+- Every living agent draws a very faint vision cone. Detection logic should use `perception.py`, not global nearest-target shortcuts, when the behavior depends on what the agent can see.
+- Dead pigs are persistent resources when they are dropped. If an agent reaches a full fire while carrying a pig, it drops the carcass near the fire. Later hunting agents only switch to that carcass if they encounter it in their vision cone.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 

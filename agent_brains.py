@@ -4,6 +4,7 @@ import math
 import random
 
 import living_body
+import perception
 import sim_resources
 from sim_geometry import clamp, distance
 
@@ -12,7 +13,13 @@ HUNGER_DEPLETION_PER_SECOND = 0.34
 THIRST_DEPLETION_PER_SECOND = 0.52
 NEED_CHECK_INTERVAL_MIN = 0.45
 NEED_CHECK_INTERVAL_MAX = 1.15
-ARRIVAL_EXTRA_MARGIN = 90.0
+RESOURCE_INTERACTION_EXTRA = 18.0
+RESOURCE_INTERACTION_RADIUS_MIN = 72.0
+RESOURCE_POINT_RADIUS_CAP = 90.0
+ATTACK_INTERACTION_EXTRA = 14.0
+ATTACK_INTERACTION_RADIUS_MIN = 76.0
+ATTACK_TARGET_RADIUS_CAP = 80.0
+WATER_INTERACTION_RADIUS = 72.0
 
 
 def normalize_brain_state(agent: dict) -> None:
@@ -23,6 +30,8 @@ def normalize_brain_state(agent: dict) -> None:
     inventory.setdefault("jar", False)
     inventory.setdefault("jarFilled", False)
     inventory.setdefault("rawPig", False)
+    inventory.setdefault("rawPigLabel", None)
+    inventory.setdefault("rawPigBody", None)
     agent["inventory"] = inventory
     agent.setdefault("needCheckTimer", 0.0)
 
@@ -133,6 +142,10 @@ def assign_water_job(agent: dict, layout: dict, basin: dict) -> None:
 
 
 def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Random, fire: dict) -> None:
+    dead_pig = perception.nearest_visible_dead_pig(agent, resources)
+    if dead_pig is not None:
+        assign_dead_pig_pickup_job(agent, dead_pig, fire, "dead pig seen in cone")
+        return
     target = sim_resources.nearest_attack_target(
         layout,
         resources,
@@ -155,6 +168,29 @@ def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Rand
         },
     }
     agent["intent"] = {"action": "go_to", "target": target["label"], "reason": "fire has an empty slot"}
+
+
+def assign_dead_pig_pickup_job(agent: dict, dead_pig: dict, fire: dict, reason: str) -> None:
+    agent["job"] = {
+        "type": "hunt_food",
+        "phase": "pickup_dead_pig",
+        "fireId": fire["id"],
+        "deadPigId": dead_pig["id"],
+        "attack": {
+            "target": {
+                "kind": "dead_pig",
+                "id": dead_pig["id"],
+                "label": dead_pig["label"],
+                "radius": dead_pig.get("radius", 70.0),
+                "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
+            },
+            "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
+            "reacquire": {"kind": "pig", "forest": "north"},
+            "reason": "pick up dead pig",
+            "onDefeat": "carry_raw_pig",
+        },
+    }
+    agent["intent"] = {"action": "go_to", "target": dead_pig["label"], "reason": reason}
 
 
 def advance_job(agent: dict, dt: float, context: dict) -> bool:
@@ -235,7 +271,7 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
         if water_position is None:
             finish_job(agent, "no water source available")
             return False
-        if not at_position(agent, water_position, 120.0):
+        if not at_position(agent, water_position, WATER_INTERACTION_RADIUS):
             agent["intent"] = {"action": "go_to", "target": "Water source", "reason": "fill jar"}
             return move_towards(agent, water_position, dt, context)
         agent["inventory"]["jar"] = True
@@ -287,6 +323,12 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
         return False
 
     if job.get("phase") == "attack_target":
+        visible_dead_pig = perception.nearest_visible_dead_pig(agent, resources)
+        if visible_dead_pig is not None:
+            job["phase"] = "pickup_dead_pig"
+            job["deadPigId"] = visible_dead_pig["id"]
+            agent["intent"] = {"action": "go_to", "target": visible_dead_pig["label"], "reason": "dead pig seen in cone"}
+            return True
         attack = job.get("attack", {})
         target_ref = attack.get("target")
         target_limb = living_body.normalize_limb(attack.get("targetLimb"))
@@ -302,14 +344,31 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
             attack["target"] = target_ref
         elif isinstance(target_ref, dict):
             target_ref["targetLimb"] = target_limb
-        attack_radius = agent["radius"] + float(target.get("radius", target_ref.get("radius", 75.0))) + ARRIVAL_EXTRA_MARGIN
+        attack_radius = attack_interaction_radius(agent, target)
         if not at_position(agent, target["position"], attack_radius):
             agent["intent"] = {"action": "attack_target", "target": target["label"], "reason": attack.get("reason", "attack target")}
             return move_towards(agent, target["position"], dt, context)
         defeated = sim_resources.defeat_attack_target(layout, resources, target_ref, rng)
         if defeated is not None and attack.get("onDefeat") == "carry_raw_pig":
-            agent["inventory"]["rawPig"] = True
+            carry_dead_pig(agent, defeated)
             emit_interaction(context, agent, "attack_target", defeated, defeated.get("kind", "target"), target_limb=target_limb)
+        job["phase"] = "to_fire"
+        return True
+
+    if job.get("phase") == "pickup_dead_pig":
+        dead_pig = sim_resources.dead_pig_by_id(resources, job.get("deadPigId"))
+        if dead_pig is None:
+            job["phase"] = "attack_target"
+            return True
+        if not at_position(agent, dead_pig["position"], attack_interaction_radius(agent, dead_pig)):
+            agent["intent"] = {"action": "go_to", "target": dead_pig["label"], "reason": "pick up dead pig"}
+            return move_towards(agent, dead_pig["position"], dt, context)
+        picked_up = sim_resources.pick_up_dead_pig(resources, dead_pig["id"])
+        if picked_up is None:
+            job["phase"] = "attack_target"
+            return True
+        carry_dead_pig(agent, picked_up)
+        emit_interaction(context, agent, "pick_up_dead_pig", picked_up, "Dead Pig")
         job["phase"] = "to_fire"
         return True
 
@@ -318,12 +377,20 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
             agent["intent"] = {"action": "go_to", "target": fire["label"], "reason": "bring raw pig to fire"}
             return move_towards(agent, fire["position"], dt, context)
         if agent["inventory"].get("rawPig") and sim_resources.place_raw_pig(resources, fire["id"]):
-            agent["inventory"]["rawPig"] = False
+            clear_carried_raw_pig(agent)
             emit_interaction(context, agent, "place_raw_pig", fire, "Fire")
             finish_job(agent, "placed raw pig on fire")
         else:
-            agent["inventory"]["rawPig"] = False
-            finish_job(agent, "no empty fire slot")
+            if agent["inventory"].get("rawPig"):
+                dropped = sim_resources.drop_dead_pig(
+                    resources,
+                    agent["position"],
+                    label=agent["inventory"].get("rawPigLabel"),
+                    body=agent["inventory"].get("rawPigBody"),
+                )
+                emit_interaction(context, agent, "drop_dead_pig", dropped, "Dead Pig")
+            clear_carried_raw_pig(agent)
+            finish_job(agent, "no empty fire slot; dropped dead pig")
         return True
 
     finish_job(agent, "hunt job complete")
@@ -379,11 +446,43 @@ def finish_job(agent: dict, reason: str) -> None:
 
 
 def at_point(agent: dict, point: dict) -> bool:
-    return at_position(agent, point["position"], agent["radius"] + point["radius"] + ARRIVAL_EXTRA_MARGIN)
+    return at_position(agent, point["position"], point_interaction_radius(agent, point))
 
 
 def at_position(agent: dict, position: dict, radius: float) -> bool:
     return distance(agent["position"], position) <= radius
+
+
+def point_interaction_radius(agent: dict, point: dict) -> float:
+    return max(
+        RESOURCE_INTERACTION_RADIUS_MIN,
+        float(agent.get("radius", 90.0)) * 0.35
+        + min(float(point.get("radius", 90.0)), RESOURCE_POINT_RADIUS_CAP) * 0.35
+        + RESOURCE_INTERACTION_EXTRA,
+    )
+
+
+def attack_interaction_radius(agent: dict, target: dict) -> float:
+    return max(
+        ATTACK_INTERACTION_RADIUS_MIN,
+        float(agent.get("radius", 90.0)) * 0.45
+        + min(float(target.get("radius", 75.0)), ATTACK_TARGET_RADIUS_CAP) * 0.45
+        + ATTACK_INTERACTION_EXTRA,
+    )
+
+
+def carry_dead_pig(agent: dict, dead_pig: dict) -> None:
+    inventory = agent["inventory"]
+    inventory["rawPig"] = True
+    inventory["rawPigLabel"] = dead_pig.get("label", "Dead Pig")
+    inventory["rawPigBody"] = dead_pig.get("body")
+
+
+def clear_carried_raw_pig(agent: dict) -> None:
+    inventory = agent["inventory"]
+    inventory["rawPig"] = False
+    inventory["rawPigLabel"] = None
+    inventory["rawPigBody"] = None
 
 
 def move_towards(agent: dict, target: dict, dt: float, context: dict) -> bool:

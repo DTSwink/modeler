@@ -35,7 +35,9 @@ def build_resource_state(layout: dict, rng: random.Random) -> dict:
         "basins": {},
         "fires": {},
         "pigs": [],
+        "deadPigs": [],
         "nextPigIndex": 1,
+        "nextDeadPigIndex": 1,
     }
     sync_resource_state(layout, state, rng)
     return state
@@ -45,7 +47,9 @@ def sync_resource_state(layout: dict, state: dict, rng: random.Random) -> None:
     state.setdefault("basins", {})
     state.setdefault("fires", {})
     state.setdefault("pigs", [])
+    state.setdefault("deadPigs", [])
     state.setdefault("nextPigIndex", 1)
+    state.setdefault("nextDeadPigIndex", 1)
 
     basin_ids = set()
     fire_ids = set()
@@ -79,6 +83,8 @@ def sync_resource_state(layout: dict, state: dict, rng: random.Random) -> None:
             del state["fires"][point_id]
 
     sync_forest_pigs(layout, state, rng)
+    for dead_pig in state["deadPigs"]:
+        normalize_dead_pig_state(dead_pig)
 
 
 def tick_resources(state: dict, dt: float, *, layout: dict | None = None, rng: random.Random | None = None) -> None:
@@ -328,6 +334,58 @@ def normalize_pig_state(pig: dict, rng: random.Random) -> None:
     pig.setdefault("targetHeadingRadians", pig["headingRadians"])
     pig.setdefault("moveSpeed", rng.uniform(PIG_MOVE_SPEED_MIN, PIG_MOVE_SPEED_MAX))
     pig.setdefault("decisionTimer", rng.uniform(PIG_DECISION_INTERVAL_MIN, PIG_DECISION_INTERVAL_MAX))
+
+
+def normalize_dead_pig_state(dead_pig: dict) -> None:
+    dead_pig.setdefault("kind", "dead_pig")
+    dead_pig.setdefault("label", "Dead Pig")
+    dead_pig.setdefault("position", {"x": 0.0, "y": 0.0})
+    dead_pig.setdefault("radius", 70.0)
+    health = dead_pig.get("health") if isinstance(dead_pig.get("health"), dict) else {}
+    health["status"] = "dead"
+    health.setdefault("wounds", [])
+    dead_pig["health"] = health
+    living_body.normalize_body_state(dead_pig)
+
+
+def drop_dead_pig(state: dict, position: dict, *, label: str | None = None, body: dict | None = None) -> dict:
+    state.setdefault("deadPigs", [])
+    state.setdefault("nextDeadPigIndex", 1)
+    dead_pig_id = f"dead-pig-{state['nextDeadPigIndex']}"
+    state["nextDeadPigIndex"] += 1
+    dead_pig = {
+        "id": dead_pig_id,
+        "label": label or f"Dead Pig {dead_pig_id.split('-')[-1]}",
+        "kind": "dead_pig",
+        "position": deepcopy(position),
+        "radius": 70.0,
+        "health": {
+            "status": "dead",
+            "wounds": [],
+        },
+        "body": deepcopy(body) if isinstance(body, dict) else living_body.build_default_body_state(),
+    }
+    if not isinstance(body, dict):
+        living_body.record_wound(dead_pig, limb=living_body.DEFAULT_ATTACK_LIMB, severity="fatal", source="carcass")
+    normalize_dead_pig_state(dead_pig)
+    state["deadPigs"].append(dead_pig)
+    return dead_pig
+
+
+def pick_up_dead_pig(state: dict, dead_pig_id: str | None) -> dict | None:
+    if dead_pig_id is None:
+        return None
+    for index, dead_pig in enumerate(state.get("deadPigs", [])):
+        if dead_pig["id"] != dead_pig_id:
+            continue
+        return state["deadPigs"].pop(index)
+    return None
+
+
+def dead_pig_by_id(state: dict, dead_pig_id: str | None) -> dict | None:
+    if dead_pig_id is None:
+        return None
+    return next((dead_pig for dead_pig in state.get("deadPigs", []) if dead_pig["id"] == dead_pig_id), None)
 
 
 def move_pigs(layout: dict, state: dict, dt: float, rng: random.Random) -> None:

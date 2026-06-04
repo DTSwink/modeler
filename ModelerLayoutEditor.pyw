@@ -15,6 +15,7 @@ import agent_state
 import agent_brains
 import editor_runtime
 import living_body
+import perception
 import sim_resources
 from editor_runtime import RomanSimulationRuntime
 from editor_view_state import read_saved_view, write_saved_view
@@ -77,6 +78,7 @@ DYNAMIC_RELOAD_MODULES = [
     agent_brains,
     editor_runtime,
     living_body,
+    perception,
     sim_resources,
 ]
 OMNIDIRECTIONAL_POINT_TYPES = {
@@ -113,6 +115,8 @@ INTERACTION_COLORS = {
     "drop_jar": "#d2ad58",
     "attack_target": "#d84f35",
     "place_raw_pig": "#f2d62d",
+    "pick_up_dead_pig": "#8d5a32",
+    "drop_dead_pig": "#8d5a32",
 }
 
 ZONE_TYPES = [
@@ -1132,10 +1136,11 @@ class LayoutEditorApp:
         show_error_dialog: bool = True,
         raise_errors: bool = False,
     ) -> str | None:
-        global agent_state, agent_panel, agent_brains, editor_runtime, living_body, sim_resources, RomanSimulationRuntime, DYNAMIC_RELOAD_MODULES
+        global agent_state, agent_panel, agent_brains, editor_runtime, living_body, perception, sim_resources, RomanSimulationRuntime, DYNAMIC_RELOAD_MODULES
         try:
             importlib.invalidate_caches()
             living_body = importlib.reload(living_body)
+            perception = importlib.reload(perception)
             agent_state = importlib.reload(agent_state)
             agent_panel = importlib.reload(agent_panel)
             agent_brains = importlib.reload(agent_brains)
@@ -1148,6 +1153,7 @@ class LayoutEditorApp:
                 agent_brains,
                 editor_runtime,
                 living_body,
+                perception,
                 sim_resources,
             ]
             self.rebuild_dynamic_widgets()
@@ -1803,8 +1809,12 @@ class LayoutEditorApp:
                 self.draw_wall(wall)
             for point in self.layout["points"]:
                 self.draw_point(point)
+            for agent in self.simulation.agents:
+                self.draw_agent_vision_cone(agent)
             for pig in self.simulation.resources.get("pigs", []):
                 self.draw_pig(pig)
+            for dead_pig in self.simulation.resources.get("deadPigs", []):
+                self.draw_dead_pig(dead_pig)
             for agent in self.simulation.agents:
                 self.draw_agent(agent)
             self.draw_interaction_pulses()
@@ -1937,6 +1947,25 @@ class LayoutEditorApp:
         width = max(4, wall["thickness"] * self.view["scale"] * 0.32)
         self.canvas.create_line(a["x"], a["y"], b["x"], b["y"], fill=color, width=width, capstyle=tk.ROUND)
 
+    def draw_agent_vision_cone(self, agent: dict) -> None:
+        if agent.get("health", {}).get("status") == "dead":
+            return
+        cone_points = perception.vision_cone_points(agent, segments=14)
+        screen_points = []
+        for point in cone_points:
+            screen = self.world_to_canvas(point)
+            screen_points.extend([screen["x"], screen["y"]])
+        color = blend_hex(faction_color(agent["faction"]), CANVAS_BACKGROUND, 0.88)
+        outline = blend_hex(faction_color(agent["faction"]), CANVAS_BACKGROUND, 0.78)
+        self.canvas.create_polygon(
+            screen_points,
+            fill=color,
+            outline=outline,
+            width=1,
+            stipple="gray12",
+            tags=("vision_cone",),
+        )
+
     def draw_interaction_pulses(self) -> None:
         if not self.interaction_pulses:
             return
@@ -2017,6 +2046,38 @@ class LayoutEditorApp:
             fill="#b5774a",
             outline="",
             tags=("pig",),
+        )
+
+    def draw_dead_pig(self, dead_pig: dict) -> None:
+        screen = self.world_to_canvas(dead_pig["position"])
+        radius = max(3.0, dead_pig["radius"] * self.view["scale"] * 0.1)
+        self.canvas.create_oval(
+            screen["x"] - radius * 1.15,
+            screen["y"] - radius * 0.75,
+            screen["x"] + radius * 1.15,
+            screen["y"] + radius * 0.75,
+            fill="#5d4634",
+            outline="#2d2118",
+            width=1,
+            tags=("dead_pig",),
+        )
+        self.canvas.create_line(
+            screen["x"] - radius * 0.65,
+            screen["y"] - radius * 0.6,
+            screen["x"] + radius * 0.65,
+            screen["y"] + radius * 0.6,
+            fill="#2d2118",
+            width=1,
+            tags=("dead_pig",),
+        )
+        self.canvas.create_line(
+            screen["x"] - radius * 0.65,
+            screen["y"] + radius * 0.6,
+            screen["x"] + radius * 0.65,
+            screen["y"] - radius * 0.6,
+            fill="#2d2118",
+            width=1,
+            tags=("dead_pig",),
         )
 
     def draw_point(self, point: dict) -> None:
