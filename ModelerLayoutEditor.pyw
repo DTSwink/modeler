@@ -17,7 +17,7 @@ import editor_runtime
 import sim_resources
 from editor_runtime import RomanSimulationRuntime
 from editor_view_state import read_saved_view, write_saved_view
-from layout_document import deep_copy, normalize_layout, read_json, write_json
+from layout_document import deep_copy, merge_layout_save, normalize_layout, read_json, write_json
 from sim_geometry import clamp, distance, local_to_world, point_to_segment_distance, world_to_local
 
 
@@ -641,6 +641,23 @@ class LayoutEditorApp:
         self.dirty = self.layout != self.saved_layout
         self._sync_world_controls()
 
+    def reload_saved_layout_if_clean(self) -> bool:
+        if self.dirty:
+            return False
+        try:
+            layout = self._normalize_layout(read_json(CURRENT_LAYOUT_PATH))
+        except Exception:
+            return False
+        if layout == self.layout:
+            return False
+        self.layout = layout
+        self.saved_layout = deep_copy(layout)
+        self.simulation.attach_layout(self.layout)
+        self.ensure_valid_selection()
+        self.ensure_valid_last_clicked_agent()
+        self._sync_world_controls()
+        return True
+
     def update_meta_and_title(self) -> None:
         build_text = f"UI {format_build_stamp(self.loaded_build_mtime)}"
         reload_text = " | Refresh modules available" if self.dynamic_reload_needed else ""
@@ -1043,8 +1060,17 @@ class LayoutEditorApp:
         for zone in self.layout["zones"]:
             zone["color"] = semantic_zone_color(zone["type"], zone["color"])
         self.layout["locations"] = self.layout["points"]
+        disk_layout = read_json(CURRENT_LAYOUT_PATH)
+        merged_layout = merge_layout_save(self.saved_layout, self.layout, disk_layout)
+        if "points" in merged_layout:
+            merged_layout["locations"] = deep_copy(merged_layout["points"])
+        self.layout = self._normalize_layout(merged_layout)
         write_json(CURRENT_LAYOUT_PATH, self.layout)
         self.saved_layout = deep_copy(self.layout)
+        self.simulation.attach_layout(self.layout)
+        self.ensure_valid_selection()
+        self.ensure_valid_last_clicked_agent()
+        self._sync_world_controls()
         self.dirty = False
         self.status_var.set(message)
         self.update_meta_and_title()
@@ -1089,7 +1115,11 @@ class LayoutEditorApp:
             self.rebuild_dynamic_widgets()
             self.loaded_dynamic_module_mtimes = self.current_dynamic_module_mtimes()
             self.dynamic_reload_needed = False
-            self.status_var.set("Reloaded dynamic UI modules in the current window.")
+            layout_reloaded = self.reload_saved_layout_if_clean()
+            if layout_reloaded:
+                self.status_var.set("Reloaded dynamic UI modules and saved layout in the current window.")
+            else:
+                self.status_var.set("Reloaded dynamic UI modules in the current window.")
             self.render_all()
         except Exception as error:
             self.status_var.set(f"Refresh failed: {error}")
@@ -2034,25 +2064,53 @@ class LayoutEditorApp:
         )
 
     def draw_jar_location(self, point: dict, screen: dict, inner_radius: float) -> None:
-        size = inner_radius * 1.22
+        size = inner_radius * 1.34
+        rack_left = screen["x"] - size * 0.58
+        rack_top = screen["y"] - size * 0.34
+        rack_right = screen["x"] + size * 0.58
+        rack_bottom = screen["y"] + size * 0.42
         self.canvas.create_rectangle(
-            screen["x"] - size * 0.48,
-            screen["y"] - size * 0.42,
-            screen["x"] + size * 0.48,
-            screen["y"] + size * 0.42,
-            fill="#d2ad58",
-            outline="",
+            rack_left,
+            rack_top,
+            rack_right,
+            rack_bottom,
+            fill="#e1c67a",
+            outline="#8a6d31",
+            width=1,
             tags=("resource_jar_location",),
         )
         self.canvas.create_rectangle(
-            screen["x"] - size * 0.22,
-            screen["y"] - size * 0.65,
-            screen["x"] + size * 0.22,
-            screen["y"] - size * 0.36,
-            fill="#d2ad58",
+            rack_left,
+            screen["y"] + size * 0.15,
+            rack_right,
+            screen["y"] + size * 0.24,
+            fill="#8a6d31",
             outline="",
             tags=("resource_jar_location",),
         )
+        jar_radius = max(2.0, size * 0.16)
+        for offset in (-0.31, 0.0, 0.31):
+            jar_x = screen["x"] + size * offset
+            self.canvas.create_rectangle(
+                jar_x - jar_radius * 0.58,
+                screen["y"] - jar_radius * 1.44,
+                jar_x + jar_radius * 0.58,
+                screen["y"] - jar_radius * 0.8,
+                fill="#b78a39",
+                outline="#6c5128",
+                width=1,
+                tags=("resource_jar_location",),
+            )
+            self.canvas.create_oval(
+                jar_x - jar_radius,
+                screen["y"] - jar_radius,
+                jar_x + jar_radius,
+                screen["y"] + jar_radius * 0.85,
+                fill="#d2ad58",
+                outline="#6c5128",
+                width=1,
+                tags=("resource_jar_location",),
+            )
 
     def point_visual_radius_pixels(self, point: dict) -> float:
         return max(6.0, point["radius"] * self.view["scale"] * 0.12)

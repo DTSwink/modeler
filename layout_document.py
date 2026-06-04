@@ -22,6 +22,84 @@ def deep_copy(payload: dict) -> dict:
     return json.loads(json.dumps(payload))
 
 
+def merge_layout_save(base, current, disk):
+    if isinstance(current, dict):
+        result = deep_copy(disk) if isinstance(disk, dict) else {}
+        base_dict = base if isinstance(base, dict) else {}
+        disk_dict = disk if isinstance(disk, dict) else {}
+        for key, current_value in current.items():
+            if key not in base_dict:
+                result[key] = deep_copy(current_value)
+                continue
+            if current_value == base_dict[key]:
+                if key not in result:
+                    result[key] = deep_copy(current_value)
+                continue
+            result[key] = merge_layout_save(base_dict[key], current_value, disk_dict.get(key))
+        return result
+
+    if isinstance(current, list):
+        return _merge_layout_list_save(base, current, disk)
+
+    if current == base:
+        return deep_copy(disk) if disk is not None else deep_copy(current)
+    return deep_copy(current)
+
+
+def _merge_layout_list_save(base, current, disk):
+    if not _is_id_list(current):
+        if current == base:
+            return deep_copy(disk) if isinstance(disk, list) else deep_copy(current)
+        return deep_copy(current)
+
+    current_ids = {
+        item["id"]
+        for item in current
+        if isinstance(item, dict) and "id" in item
+    }
+    base_by_id = {
+        item["id"]: item
+        for item in base
+        if isinstance(item, dict) and "id" in item
+    } if isinstance(base, list) else {}
+    disk_items = deep_copy(disk) if isinstance(disk, list) else []
+    disk_by_id = {
+        item["id"]: index
+        for index, item in enumerate(disk_items)
+        if isinstance(item, dict) and "id" in item
+    }
+
+    for current_item in current:
+        if not isinstance(current_item, dict) or "id" not in current_item:
+            continue
+        item_id = current_item["id"]
+        if item_id in base_by_id:
+            if item_id in disk_by_id:
+                index = disk_by_id[item_id]
+                disk_items[index] = merge_layout_save(base_by_id[item_id], current_item, disk_items[index])
+            else:
+                disk_by_id[item_id] = len(disk_items)
+                disk_items.append(deep_copy(current_item))
+        elif item_id in disk_by_id:
+            disk_items[disk_by_id[item_id]] = deep_copy(current_item)
+        else:
+            disk_by_id[item_id] = len(disk_items)
+            disk_items.append(deep_copy(current_item))
+
+    removed_ids = set(base_by_id) - current_ids
+    if removed_ids:
+        disk_items = [
+            item
+            for item in disk_items
+            if not (isinstance(item, dict) and item.get("id") in removed_ids)
+        ]
+    return disk_items
+
+
+def _is_id_list(value) -> bool:
+    return isinstance(value, list) and any(isinstance(item, dict) and "id" in item for item in value)
+
+
 def normalize_layout(payload: dict, *, zone_color_resolver, updated_default: str) -> dict:
     layout = deep_copy(payload)
     layout.setdefault("editor", {})

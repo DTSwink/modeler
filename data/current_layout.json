@@ -25,10 +25,10 @@
     "labelFontSize": 8,
     "labelMode": "Hover",
     "savedView": {
-      "zoom": 2.7731,
+      "zoom": 2.5758,
       "center": {
-        "x": 7149.42,
-        "y": 4000
+        "x": 8179.74,
+        "y": 3127.18
       }
     }
   },
@@ -393,7 +393,7 @@
         "x": 7610,
         "y": 3200
       },
-      "radius": 163.81923985689312,
+      "radius": 304.99368187718215,
       "facingRadians": 1.5967212798701578,
       "slotCount": 3
     },
@@ -406,22 +406,22 @@
         "x": 5990,
         "y": 2990
       },
-      "radius": 90,
+      "radius": 295.04833859234634,
       "facingRadians": 1.5342707557342394,
       "slotCount": 1
     },
     {
       "id": "point-roman-jar-location",
+      "label": "Roman Jar Area",
       "type": "JarLocation",
-      "label": "Roman Jar Location",
       "faction": "Roman",
       "position": {
         "x": 6290,
         "y": 3250
       },
-      "radius": 90,
-      "slotCount": 1,
-      "facingRadians": 0
+      "radius": 162.2765862257905,
+      "facingRadians": 0,
+      "slotCount": 1
     },
     {
       "id": "point-roman-watchtower",
@@ -503,16 +503,16 @@
     },
     {
       "id": "point-ottoman-jar-location",
+      "label": "Ottoman Jar Area",
       "type": "JarLocation",
-      "label": "Ottoman Jar Location",
       "faction": "Ottoman",
       "position": {
         "x": 16740,
         "y": 3860
       },
-      "radius": 90,
-      "slotCount": 1,
-      "facingRadians": 0
+      "radius": 120,
+      "facingRadians": 0,
+      "slotCount": 1
     },
     {
       "id": "point-ottoman-watchtower",
@@ -577,7 +577,7 @@
         "x": 7610,
         "y": 3200
       },
-      "radius": 163.81923985689312,
+      "radius": 304.99368187718215,
       "facingRadians": 1.5967212798701578,
       "slotCount": 3
     },
@@ -590,22 +590,22 @@
         "x": 5990,
         "y": 2990
       },
-      "radius": 90,
+      "radius": 295.04833859234634,
       "facingRadians": 1.5342707557342394,
       "slotCount": 1
     },
     {
       "id": "point-roman-jar-location",
+      "label": "Roman Jar Area",
       "type": "JarLocation",
-      "label": "Roman Jar Location",
       "faction": "Roman",
       "position": {
         "x": 6290,
         "y": 3250
       },
-      "radius": 90,
-      "slotCount": 1,
-      "facingRadians": 0
+      "radius": 162.2765862257905,
+      "facingRadians": 0,
+      "slotCount": 1
     },
     {
       "id": "point-roman-watchtower",
@@ -687,16 +687,16 @@
     },
     {
       "id": "point-ottoman-jar-location",
+      "label": "Ottoman Jar Area",
       "type": "JarLocation",
-      "label": "Ottoman Jar Location",
       "faction": "Ottoman",
       "position": {
         "x": 16740,
         "y": 3860
       },
-      "radius": 90,
-      "slotCount": 1,
-      "facingRadians": 0
+      "radius": 120,
+      "facingRadians": 0,
+      "slotCount": 1
     },
     {
       "id": "point-ottoman-watchtower",

@@ -14,6 +14,8 @@ Update this journal after every implementation block or meaningful architecture 
 
 Saved layout JSON is project state, not disposable local scratch. When the user saves a layout or asks for implementation work that depends on the current authored map, commit `data/current_layout.json` with the related code/docs unless the user explicitly says not to.
 
+Layout saves must be non-destructive. A save from an older or stale editor instance should only apply fields and markers that actually changed from that instance's loaded baseline. Disk-only fields, newer marker types, newer resource fields, and other authored data must survive. Deletions are only destructive for objects the editor actually loaded before deleting, never for newer disk-only objects the stale editor did not know about.
+
 Remote publication requires an explicit user request. Local commits are allowed when they make the work recoverable and coherent.
 
 ## Current Stop Point
@@ -81,7 +83,7 @@ Important files:
 - `editor_command_bridge.py`: lightweight file-command bridge used to control the already-open editor without focusing it.
 - `editor_runtime.py`: isolated Roman-side runtime simulation logic used by the native editor.
 - `editor_view_state.py`: isolated saved-camera normalization/read/write helpers for the native editor.
-- `layout_document.py`: isolated authored-layout load/save/normalize helpers shared by the native editor.
+- `layout_document.py`: isolated authored-layout load/save/normalize helpers, including non-destructive save merging, shared by the native editor.
 - `sim_resources.py`: isolated runtime resource state for basins, fire slots, jar jobs, and forest pig populations.
 - `sim_geometry.py`: isolated headless geometry helpers shared by the editor and runtime.
 - `ModelerLayoutEditorLauncher.exe`: native Windows launcher used by the desktop shortcut.
@@ -202,7 +204,7 @@ The editor currently supports:
 - A file-based command bridge so background tooling can ask the already-open editor to `refresh` or `ping` without opening another app window.
 - Explicit `Save Layout` button and `Ctrl+S` shortcut.
 - Unsaved in-memory editing with a close prompt before discarding changes.
-- Explicit save into `data/current_layout.json`.
+- Explicit non-destructive save into `data/current_layout.json`; saves merge changed in-memory values onto the current disk file so newer authored fields are not erased by stale app state.
 - Camp sub-areas for tents, infirmaries, and training grounds.
 - Background grass implied by absence of a specific zone, so the old grass hallway authoring zone has been removed.
 - First Roman-side runtime sandbox with five prototype agents spawning from the authored Roman camp, then roaming across the full authored map.
@@ -227,7 +229,7 @@ The editor currently supports:
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 
-`Refresh App` now reloads `agent_state.py` and `agent_panel.py` in-process with `importlib.reload`, rebuilds the affected widget, and redraws the current window. Full edits to `ModelerLayoutEditor.pyw` still require one real editor restart because the main Tk shell owns bindings, menus, layout scaffolding, and process-level app identity. Future frequently edited UI should be extracted into reloadable modules so small changes can apply without closing the current editor.
+`Refresh App` now reloads dynamic Python modules in-process with `importlib.reload`, rebuilds affected widgets, and redraws the current window. When the editor has no unsaved layout edits, refresh also reloads `data/current_layout.json` so Codex-side saved layout fixes can appear in the open editor without a full restart. Full edits to `ModelerLayoutEditor.pyw` still require one real editor restart because the main Tk shell owns bindings, menus, layout scaffolding, and process-level app identity. Future frequently edited UI should be extracted into reloadable modules so small changes can apply without closing the current editor.
 
 The background command workflow is:
 
