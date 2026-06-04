@@ -239,6 +239,8 @@ The editor currently supports:
 - Dead pigs are persistent resources when they are dropped. If an agent reaches a full fire while carrying a pig, it drops the carcass near the fire. Later hunting agents only switch to that carcass if they encounter it in their vision cone.
 - Hunting jobs remember how many fire slots were empty when the job began. While still hunting, the agent records distinct visible soldiers carrying dead pigs; once that seen carrier count reaches the remembered empty-slot count, the hunter returns to the fire instead of continuing. This memory is intentionally observation-based and may be stale.
 - Basin drinking and cooked-pig eating now deplete resource quantities at 10% of the previous per-interaction amount.
+- Water-refill jobs are delegated through vision, not global knowledge. If an agent is about to start or has not yet picked up a jar for a basin refill, seeing another live agent carrying a jar makes it abort the refill idea. Once it has picked up its own jar, it keeps the job.
+- Hunger/thirst jobs have an explicit response band. Values at or above 70 should not trigger voluntary eat/drink jobs; values at or below 35 are urgent. The special "eat/drink before logistics" behavior only happens at 55 or below so an 80% thirst agent does not drink before refilling a low basin.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 
@@ -328,12 +330,14 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 24. Click a Roman agent and confirm the compact lower-left viewer `Agent Attributes` panel appears with a live scrollable snapshot.
 25. Click a non-agent map object and confirm the `Agent Attributes` panel hides.
 26. Confirm the pane shows hunger `100/100`, thirst `100/100`, and status `Alive` for fresh agents.
-27. Open `RunBlock0ASmoke.exe`.
-28. The script initializes the Visual Studio C++ toolchain.
-29. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-30. It runs the produced smoke test.
-31. The smoke test creates one zone, one location, and one wall.
-32. It asserts the summary counts and prints the Block 0A validation message.
+27. With a low basin, confirm an 80% thirst agent refills instead of drinking first.
+28. Confirm an agent that has not picked up a jar aborts its water-refill idea when a jar-carrying agent is visible in its cone, while an agent already holding a jar continues.
+29. Open `RunBlock0ASmoke.exe`.
+30. The script initializes the Visual Studio C++ toolchain.
+31. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+32. It runs the produced smoke test.
+33. The smoke test creates one zone, one location, and one wall.
+34. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 

@@ -13,6 +13,9 @@ HUNGER_DEPLETION_PER_SECOND = 0.34
 THIRST_DEPLETION_PER_SECOND = 0.52
 NEED_CHECK_INTERVAL_MIN = 0.45
 NEED_CHECK_INTERVAL_MAX = 1.15
+NEED_RESPONSE_START = 70.0
+NEED_URGENT_THRESHOLD = 35.0
+PRE_LOGISTICS_NEED_THRESHOLD = 55.0
 RESOURCE_INTERACTION_EXTRA = 18.0
 RESOURCE_INTERACTION_RADIUS_MIN = 72.0
 RESOURCE_POINT_RADIUS_CAP = 90.0
@@ -80,14 +83,16 @@ def maybe_assign_job(agent: dict, context: dict) -> None:
         agent["needCheckTimer"] = rng.uniform(NEED_CHECK_INTERVAL_MIN, NEED_CHECK_INTERVAL_MAX)
 
     if basin and sim_resources.is_basin_low(resources, basin["id"]):
-        if thirst < 95.0 and sim_resources.basin_state(resources, basin["id"])["capacity"] > 0:
+        if thirst <= PRE_LOGISTICS_NEED_THRESHOLD and sim_resources.basin_state(resources, basin["id"])["capacity"] > 0:
             assign_drink_job(agent, basin, "basin low; drink before refilling")
+        elif should_abort_water_job_for_visible_jar(agent, context):
+            finish_job(agent, "visible jar carrier already handling basin")
         else:
             assign_water_job(agent, layout, basin)
         return
 
     if fire and sim_resources.fire_has_empty_slot(resources, fire["id"]):
-        if hunger < 95.0 and sim_resources.fire_has_cooked_food(resources, fire["id"]):
+        if hunger <= PRE_LOGISTICS_NEED_THRESHOLD and sim_resources.fire_has_cooked_food(resources, fire["id"]):
             assign_eat_job(agent, fire, "empty fire slot noticed; eat before hunting")
         else:
             assign_hunt_job(agent, layout, resources, rng, fire)
@@ -105,10 +110,18 @@ def maybe_assign_job(agent: dict, context: dict) -> None:
 
 
 def should_satisfy_need(value: float, rng: random.Random) -> bool:
-    if value <= 35.0:
+    if value <= NEED_URGENT_THRESHOLD:
         return True
-    pressure = clamp((100.0 - value) / 100.0, 0.0, 1.0)
+    if value >= NEED_RESPONSE_START:
+        return False
+    pressure = clamp((NEED_RESPONSE_START - value) / (NEED_RESPONSE_START - NEED_URGENT_THRESHOLD), 0.0, 1.0)
     return rng.random() < pressure * pressure
+
+
+def should_abort_water_job_for_visible_jar(agent: dict, context: dict) -> bool:
+    if agent.get("inventory", {}).get("jar"):
+        return False
+    return bool(perception.visible_jar_carriers(agent, context.get("agents", [])))
 
 
 def assign_drink_job(agent: dict, basin: dict, reason: str) -> None:
@@ -232,7 +245,10 @@ def advance_drink_job(agent: dict, dt: float, context: dict) -> bool:
         agent["needs"]["thirst"] = clamp(agent["needs"]["thirst"] + sim_resources.WATER_THIRST_RESTORE, 0.0, 100.0)
         emit_interaction(context, agent, "drink", basin, "Basin")
     if sim_resources.is_basin_low(context["resources"], basin["id"]):
-        assign_water_job(agent, context["layout"], basin)
+        if should_abort_water_job_for_visible_jar(agent, context):
+            finish_job(agent, "visible jar carrier already handling basin")
+        else:
+            assign_water_job(agent, context["layout"], basin)
     else:
         finish_job(agent, "drank from basin")
     return True
@@ -268,6 +284,10 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
         return False
 
     phase = job.get("phase")
+    if phase in {"to_jar", "to_water"} and should_abort_water_job_for_visible_jar(agent, context):
+        finish_job(agent, "visible jar carrier already handling basin")
+        return True
+
     if phase == "to_jar":
         if jar_location is not None and not at_point(agent, jar_location):
             agent["intent"] = {"action": "go_to", "target": jar_location["label"], "reason": "pick up jar"}
