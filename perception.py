@@ -37,6 +37,21 @@ def nearest_visible_dead_pig(agent: dict, resources: dict) -> dict | None:
     return min(visible, key=lambda dead_pig: distance(agent["position"], dead_pig["position"]))
 
 
+def visible_dead_pig_carriers(observer: dict, agents: list[dict]) -> list[dict]:
+    visible = []
+    observer_id = observer.get("id")
+    for agent in agents:
+        if agent.get("id") == observer_id:
+            continue
+        if agent.get("health", {}).get("status") == "dead":
+            continue
+        if not agent.get("inventory", {}).get("rawPig"):
+            continue
+        if is_in_vision_cone(observer, agent["position"]):
+            visible.append(agent)
+    return visible
+
+
 def vision_cone_points(agent: dict, *, segments: int = 12) -> list[dict]:
     origin = agent["position"]
     heading = float(agent.get("headingRadians", 0.0))

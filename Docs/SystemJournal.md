@@ -237,6 +237,8 @@ The editor currently supports:
 - Agent resource/contact checks use tighter interaction radii than their authored visual radii, so agents must get close before drinking, eating, filling, picking up, dropping off, or attacking.
 - Every living agent draws a very faint vision cone. Detection logic should use `perception.py`, not global nearest-target shortcuts, when the behavior depends on what the agent can see.
 - Dead pigs are persistent resources when they are dropped. If an agent reaches a full fire while carrying a pig, it drops the carcass near the fire. Later hunting agents only switch to that carcass if they encounter it in their vision cone.
+- Hunting jobs remember how many fire slots were empty when the job began. While still hunting, the agent records distinct visible soldiers carrying dead pigs; once that seen carrier count reaches the remembered empty-slot count, the hunter returns to the fire instead of continuing. This memory is intentionally observation-based and may be stale.
+- Basin drinking and cooked-pig eating now deplete resource quantities at 10% of the previous per-interaction amount.
 - The runtime agent step logic and saved camera-state logic now live behind isolated helper modules instead of being buried directly inside the Tk app class.
 - Shared geometry, authored-layout normalization, agent-state snapshot/default helpers, resource state, decision jobs, and the selected-agent attribute panel now live in isolated modules instead of being owned by the Tk app.
 

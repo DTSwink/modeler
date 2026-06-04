@@ -166,9 +166,10 @@ def _format_job(job) -> str:
     phase = job.get("phase")
     target_limb = _job_target_limb(job)
     suffix = f" -> {living_body.limb_label(target_limb)}" if target_limb else ""
+    memory = _format_carrier_memory(job)
     if phase:
-        return f"{job_type} / {phase}{suffix}"
-    return f"{job_type}{suffix}"
+        return f"{job_type} / {phase}{suffix}{memory}"
+    return f"{job_type}{suffix}{memory}"
 
 
 def _format_inventory(inventory) -> str:
@@ -204,3 +205,11 @@ def _job_target_limb(job: dict) -> str | None:
     if not isinstance(attack, dict):
         return None
     return living_body.normalize_limb(attack.get("targetLimb"))
+
+
+def _format_carrier_memory(job: dict) -> str:
+    if "rememberedEmptySlots" not in job:
+        return ""
+    remembered = int(job.get("rememberedEmptySlots", 0))
+    seen = len(job.get("seenDeadPigCarriers", [])) if isinstance(job.get("seenDeadPigCarriers"), list) else 0
+    return f" | carriers {seen}/{remembered}"

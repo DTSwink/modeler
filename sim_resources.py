@@ -13,11 +13,11 @@ BASIN_INITIAL_CAPACITY = 70.0
 BASIN_LOW_THRESHOLD = 20.0
 BASIN_REFILL_TARGET = 80.0
 BASIN_REFILL_AMOUNT = 30.0
-BASIN_DRINK_AMOUNT = 18.0
+BASIN_DRINK_AMOUNT = 1.8
 WATER_TRIP_LIMIT = 3
 
 FIRE_COOK_SECONDS = 30.0
-FOOD_EAT_AMOUNT = 35.0
+FOOD_EAT_AMOUNT = 3.5
 FOOD_HUNGER_RESTORE = 45.0
 WATER_THIRST_RESTORE = 45.0
 
@@ -188,6 +188,13 @@ def is_basin_refilled(resources: dict, basin_id: str | None) -> bool:
 def fire_has_empty_slot(resources: dict, fire_id: str | None) -> bool:
     fire = fire_state(resources, fire_id)
     return fire is not None and any(slot["state"] == "empty" for slot in fire["slots"])
+
+
+def fire_empty_slot_count(resources: dict, fire_id: str | None) -> int:
+    fire = fire_state(resources, fire_id)
+    if fire is None:
+        return 0
+    return sum(1 for slot in fire["slots"] if slot["state"] == "empty")
 
 
 def fire_has_cooked_food(resources: dict, fire_id: str | None) -> bool:

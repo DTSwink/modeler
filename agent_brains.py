@@ -142,9 +142,10 @@ def assign_water_job(agent: dict, layout: dict, basin: dict) -> None:
 
 
 def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Random, fire: dict) -> None:
+    remembered_empty_slots = sim_resources.fire_empty_slot_count(resources, fire["id"])
     dead_pig = perception.nearest_visible_dead_pig(agent, resources)
     if dead_pig is not None:
-        assign_dead_pig_pickup_job(agent, dead_pig, fire, "dead pig seen in cone")
+        assign_dead_pig_pickup_job(agent, dead_pig, fire, "dead pig seen in cone", remembered_empty_slots=remembered_empty_slots)
         return
     target = sim_resources.nearest_attack_target(
         layout,
@@ -159,6 +160,8 @@ def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Rand
         "type": "hunt_food",
         "phase": "attack_target",
         "fireId": fire["id"],
+        "rememberedEmptySlots": remembered_empty_slots,
+        "seenDeadPigCarriers": [],
         "attack": {
             "target": sim_resources.attack_target_ref(target),
             "targetLimb": living_body.DEFAULT_ATTACK_LIMB,
@@ -170,12 +173,21 @@ def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Rand
     agent["intent"] = {"action": "go_to", "target": target["label"], "reason": "fire has an empty slot"}
 
 
-def assign_dead_pig_pickup_job(agent: dict, dead_pig: dict, fire: dict, reason: str) -> None:
+def assign_dead_pig_pickup_job(
+    agent: dict,
+    dead_pig: dict,
+    fire: dict,
+    reason: str,
+    *,
+    remembered_empty_slots: int,
+) -> None:
     agent["job"] = {
         "type": "hunt_food",
         "phase": "pickup_dead_pig",
         "fireId": fire["id"],
         "deadPigId": dead_pig["id"],
+        "rememberedEmptySlots": remembered_empty_slots,
+        "seenDeadPigCarriers": [],
         "attack": {
             "target": {
                 "kind": "dead_pig",
@@ -321,6 +333,13 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
     if fire is None:
         agent["job"] = None
         return False
+    job.setdefault("rememberedEmptySlots", max(1, sim_resources.fire_empty_slot_count(resources, fire["id"])))
+    job.setdefault("seenDeadPigCarriers", [])
+
+    if job.get("phase") in {"attack_target", "pickup_dead_pig"} and should_return_because_seen_carriers(agent, context, job):
+        job["phase"] = "return_to_fire"
+        agent["intent"] = {"action": "go_to", "target": fire["label"], "reason": "enough pig carriers seen"}
+        return True
 
     if job.get("phase") == "attack_target":
         visible_dead_pig = perception.nearest_visible_dead_pig(agent, resources)
@@ -372,6 +391,13 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
         job["phase"] = "to_fire"
         return True
 
+    if job.get("phase") == "return_to_fire":
+        if not at_point(agent, fire):
+            agent["intent"] = {"action": "go_to", "target": fire["label"], "reason": "enough pig carriers seen"}
+            return move_towards(agent, fire["position"], dt, context)
+        finish_job(agent, "returned because enough pig carriers were seen")
+        return True
+
     if job.get("phase") == "to_fire":
         if not at_point(agent, fire):
             agent["intent"] = {"action": "go_to", "target": fire["label"], "reason": "bring raw pig to fire"}
@@ -397,11 +423,30 @@ def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
     return True
 
 
+def should_return_because_seen_carriers(agent: dict, context: dict, job: dict) -> bool:
+    if agent.get("inventory", {}).get("rawPig"):
+        return False
+    remembered_empty_slots = int(job.get("rememberedEmptySlots", 0))
+    if remembered_empty_slots <= 0:
+        return True
+    seen_carriers = job.setdefault("seenDeadPigCarriers", [])
+    seen_ids = set(seen_carriers)
+    for carrier in perception.visible_dead_pig_carriers(agent, context.get("agents", [])):
+        carrier_id = carrier.get("id")
+        if not carrier_id or carrier_id in seen_ids:
+            continue
+        seen_ids.add(carrier_id)
+        seen_carriers.append(carrier_id)
+    return len(seen_ids) >= remembered_empty_slots
+
+
 def normalize_attack_job(job: dict) -> None:
     if job.get("type") != "hunt_pig":
         return
     job["type"] = "hunt_food"
     job["phase"] = "attack_target"
+    job.setdefault("rememberedEmptySlots", 1)
+    job.setdefault("seenDeadPigCarriers", [])
     job["attack"] = {
         "target": {
             "kind": "pig",

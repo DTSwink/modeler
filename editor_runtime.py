@@ -98,6 +98,7 @@ class RomanSimulationRuntime:
             context = {
                 "layout": self._layout,
                 "resources": self.resources,
+                "agents": self.agents,
                 "rng": self.rng,
                 "dt": sim_dt,
                 "clamp_agent_position": self.clamp_agent_position,
