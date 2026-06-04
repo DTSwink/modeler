@@ -253,12 +253,84 @@ def zone_by_id(layout: dict, zone_id: str | None) -> dict | None:
     return next((zone for zone in layout["zones"] if zone["id"] == zone_id), None)
 
 
-def nearest_water_source_position(layout: dict, position: dict) -> dict | None:
+def nearest_water_source(layout: dict, position: dict) -> dict | None:
     water_zones = [zone for zone in layout["zones"] if zone["type"] in {"Ocean", "Lake"}]
     if not water_zones:
         return None
     best_zone = min(water_zones, key=lambda zone: distance(position, closest_point_in_zone(position, zone)))
-    return closest_point_in_zone(position, best_zone)
+    return {
+        "kind": "water_source",
+        "id": best_zone["id"],
+        "label": best_zone.get("label", "Water source"),
+        "zoneType": best_zone["type"],
+        "position": closest_point_in_zone(position, best_zone),
+    }
+
+
+def objective_target(layout: dict, origin: dict, objective: dict) -> dict | None:
+    objective_type = objective.get("type")
+    if objective_type == "nearest_water_source":
+        return nearest_water_source(layout, origin)
+    if objective_type in {"point", "location"}:
+        point = point_by_id(layout, objective.get("pointId") or objective.get("id"))
+        if point is None:
+            return None
+        return {
+            "kind": "point",
+            "id": point["id"],
+            "label": point.get("label", point["id"]),
+            "pointType": point["type"],
+            "position": point["position"],
+        }
+    if objective_type == "position" and isinstance(objective.get("position"), dict):
+        return {
+            "kind": "position",
+            "id": objective.get("id"),
+            "label": objective.get("label", "Position"),
+            "position": objective["position"],
+        }
+    return None
+
+
+def distance_to_objective(layout: dict, origin: dict, objective: dict, *, pathfinder=None) -> dict:
+    target = objective_target(layout, origin, objective)
+    if target is None:
+        return {
+            "objective": dict(objective),
+            "target": None,
+            "distance": None,
+            "straightLineDistance": None,
+            "pathDistance": None,
+            "path": None,
+            "metric": "unreachable",
+        }
+
+    straight_line_distance = distance(origin, target["position"])
+    path_distance = None
+    path = None
+    if pathfinder is not None:
+        path_result = pathfinder(layout, origin, target["position"], objective)
+        if isinstance(path_result, dict):
+            raw_distance = path_result.get("distance", path_result.get("pathDistance"))
+            path_distance = float(raw_distance) if raw_distance is not None else None
+            path = path_result.get("path")
+        elif path_result is not None:
+            path_distance = float(path_result)
+
+    return {
+        "objective": dict(objective),
+        "target": target,
+        "distance": path_distance if path_distance is not None else straight_line_distance,
+        "straightLineDistance": straight_line_distance,
+        "pathDistance": path_distance,
+        "path": path,
+        "metric": "path" if path_distance is not None else "straight_line",
+    }
+
+
+def nearest_water_source_position(layout: dict, position: dict) -> dict | None:
+    water_source = nearest_water_source(layout, position)
+    return None if water_source is None else water_source["position"]
 
 
 def closest_point_in_zone(point: dict, zone: dict) -> dict:

@@ -35,6 +35,7 @@ def build_default_agent_state() -> dict:
             "jar": False,
             "jarFilled": False,
             "rawPig": False,
+            "cookedFood": False,
         },
         "needCheckTimer": 0.0,
     }
@@ -67,6 +68,7 @@ def normalize_agent_state(agent: dict) -> None:
     inventory.setdefault("jar", False)
     inventory.setdefault("jarFilled", False)
     inventory.setdefault("rawPig", False)
+    inventory.setdefault("cookedFood", False)
     agent["inventory"] = inventory
     agent.setdefault("needCheckTimer", 0.0)
 
@@ -163,6 +165,8 @@ def _format_job(job) -> str:
     if not isinstance(job, dict):
         return "None"
     job_type = str(job.get("type", "unknown"))
+    if job_type == "provide":
+        job_type = f"provide {job.get('provide', 'help')}"
     phase = job.get("phase")
     target_limb = _job_target_limb(job)
     suffix = f" -> {living_body.limb_label(target_limb)}" if target_limb else ""
@@ -182,6 +186,8 @@ def _format_inventory(inventory) -> str:
         carried.append("jar")
     if inventory.get("rawPig"):
         carried.append(str(inventory.get("rawPigLabel") or "raw pig"))
+    if inventory.get("cookedFood"):
+        carried.append("cooked food")
     return ", ".join(carried) if carried else "Empty"
 
 

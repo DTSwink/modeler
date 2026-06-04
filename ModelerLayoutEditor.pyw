@@ -117,6 +117,9 @@ INTERACTION_COLORS = {
     "place_raw_pig": "#f2d62d",
     "pick_up_dead_pig": "#8d5a32",
     "drop_dead_pig": "#8d5a32",
+    "pick_up_food": "#7a1f19",
+    "provide_drink": "#2f6dff",
+    "provide_food": "#7a1f19",
 }
 
 ZONE_TYPES = [
@@ -311,8 +314,7 @@ class LayoutEditorApp:
         self.render_all()
         self.root.bind_all("<KeyPress-space>", self.on_spacebar_press, add="+")
         self.root.bind_all("<KeyRelease-space>", self.on_spacebar_release, add="+")
-        self.root.bind_all("<KeyPress-KP_Add>", self.on_simulation_speed_key, add="+")
-        self.root.bind_all("<KeyPress-KP_Subtract>", self.on_simulation_speed_key, add="+")
+        self.root.bind_all("<KeyPress>", self.on_global_key_press, add="+")
         self.root.after(SIMULATION_FRAME_MS, self.on_simulation_frame)
         self.root.after(2500, self.poll_for_editor_code_update)
 
@@ -740,7 +742,7 @@ class LayoutEditorApp:
         self.status_var.set(f"Simulation speed set to {format_speed_label(next_speed)}.")
 
     def on_simulation_speed_key(self, event: tk.Event) -> str:
-        if getattr(event, "keysym", "") == "KP_Add":
+        if getattr(event, "keysym", "") in {"KP_Add", "plus", "Add"}:
             self.nudge_simulation_speed(1)
         else:
             self.nudge_simulation_speed(-1)
@@ -898,6 +900,17 @@ class LayoutEditorApp:
                 width=1,
             )
             return
+        if inventory.get("cookedFood"):
+            self.canvas.create_oval(
+                marker_x - marker_radius,
+                marker_y - marker_radius * 0.72,
+                marker_x + marker_radius,
+                marker_y + marker_radius * 0.72,
+                fill="#7a1f19",
+                outline="#4e241f",
+                width=1,
+            )
+            return
         if inventory.get("jar"):
             fill = "#3e8bff" if inventory.get("jarFilled") else "#f6f1df"
             self.canvas.create_rectangle(
@@ -962,6 +975,24 @@ class LayoutEditorApp:
         self.spacebar_toggle_pending = False
         self.toggle_simulation()
         return "break"
+
+    def on_global_key_press(self, event: tk.Event) -> str | None:
+        keysym = getattr(event, "keysym", "")
+        char = getattr(event, "char", "")
+        widget = self.root.focus_get() or event.widget
+        widget_class = widget.winfo_class() if widget is not None else ""
+        if keysym == "Escape":
+            self.root.destroy()
+            return "break"
+        if widget_class in SPACEBAR_TEXT_INPUT_CLASSES:
+            return None
+        if keysym in {"KP_Add", "plus", "Add"} or char == "+":
+            self.nudge_simulation_speed(1)
+            return "break"
+        if keysym in {"KP_Subtract", "minus", "Subtract"} or char == "-":
+            self.nudge_simulation_speed(-1)
+            return "break"
+        return None
 
     def mark_dirty(self, message: str) -> None:
         self.dirty = self.layout != self.saved_layout

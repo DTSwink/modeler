@@ -239,9 +239,13 @@ The editor currently supports:
 - Dead pigs are persistent resources when they are dropped. If an agent reaches a full fire while carrying a pig, it drops the carcass near the fire. Later hunting agents only switch to that carcass if they encounter it in their vision cone.
 - Hunting jobs remember how many fire slots were empty when the job began. While still hunting, the agent records distinct visible soldiers carrying dead pigs; once that seen carrier count reaches the remembered empty-slot count, the hunter returns to the fire instead of continuing. This memory is intentionally observation-based and may be stale.
 - Basin drinking and cooked-pig eating now deplete resource quantities at 10% of the previous per-interaction amount.
-- Water-refill jobs are delegated through vision, not global knowledge. If an agent is about to start or has not yet picked up a jar for a basin refill, seeing another live agent carrying a jar makes it abort the refill idea. Once it has picked up its own jar, it keeps the job.
+- Objective distance is now queried through `sim_resources.distance_to_objective(layout, origin, objective, pathfinder=None)`. The current metric is straight-line distance, but the call shape already accepts a future pathfinder result with distance/path data.
+- Water-refill jobs are delegated through vision, not global knowledge. Agents only treat visible jar carriers as basin-refill delegates when the carrier's job purpose is `fill_basin`; personal `drink_water` or `provide_drink` jar use must not make other agents abort basin logistics.
+- If a basin-refill agent already picked up a jar and sees another basin-refill jar carrier, it compares distance back to the jar source against distance to the water objective. If it is still closer to the jar source, it returns the jar and abandons; if it is closer to water, it keeps going.
+- Personal drinking no longer drinks directly from the basin. Agents pick up a jar, go to the nearest water source, fill it, drink from the jar, and return/drop the jar.
+- `provide` is a generic job family. Current variants are `provide=drink`, which uses the same jar/water phases to make another agent drink, and `provide=eat`, which takes cooked food from the fire and feeds another agent. Keep future support jobs inside this phased shape instead of making one-off movement branches.
 - Hunger/thirst jobs have an explicit response band. Values at or above 70 should not trigger voluntary eat/drink jobs; values at or below 35 are urgent. The special "eat/drink before logistics" behavior only happens at 55 or below so an 80% thirst agent does not drink before refilling a low basin.
-- Numpad `+` and numpad `-` step simulation speed through the configured speed presets.
+- Numpad `+` and numpad `-`, plus regular `+` and `-` when focus is not in a text input, step simulation speed through the configured speed presets. Escape immediately destroys the app window without an unsaved-warning prompt.
 - The selected-agent panel keeps user-collapsed sections collapsed across live refreshes. `Needs` is the first section so hunger/thirst are visible by default.
 - Basin hover labels include current capacity percentage, for example `Roman Basin 70% full`.
 - Vision cones now render as outline-only wedges. The cone itself is selectable: clicking inside an agent cone selects that agent, while only clicking the agent body starts dragging.
@@ -338,20 +342,24 @@ The browser-based viewer has been retired on purpose. The intended user-facing e
 25. Click a non-agent map object and confirm the `Agent Attributes` panel hides.
 26. Confirm the pane shows hunger `100/100`, thirst `100/100`, and status `Alive` for fresh agents.
 27. With a low basin, confirm an 80% thirst agent refills instead of drinking first.
-28. Confirm an agent that has not picked up a jar aborts its water-refill idea when a jar-carrying agent is visible in its cone, while an agent already holding a jar continues.
-29. Press numpad `+` and numpad `-` and confirm simulation speed steps through the preset values.
-30. Hover a basin and confirm the label includes capacity percentage.
-31. Collapse a selected-agent panel category, let the simulation refresh, and confirm it stays collapsed.
-32. Confirm the selected-agent panel shows `Needs` first.
-33. Confirm vision cones are outline-only and clicking inside a cone selects that agent.
-34. Start a hunt with no visible pig and confirm the hunter searches instead of immediately chasing a hidden nearest pig.
-35. Let a visible target leave the cone and confirm the hunter investigates the last seen position before forgetting it and returning to search.
-36. Open `RunBlock0ASmoke.exe`.
-37. The script initializes the Visual Studio C++ toolchain.
-38. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
-39. It runs the produced smoke test.
-40. The smoke test creates one zone, one location, and one wall.
-41. It asserts the summary counts and prints the Block 0A validation message.
+28. Confirm an agent only aborts basin refill for a visible jar carrier whose job purpose is `fill_basin`, not a personal drink/provide jar carrier.
+29. Confirm a basin-refill agent holding a jar abandons only while it is still closer to the jar source than the water objective; once closer to water, it keeps going.
+30. Confirm personal drinking uses a jar and water source instead of directly depleting the basin.
+31. Confirm a `provide=drink` job can restore another agent's thirst and a `provide=eat` job can restore another agent's hunger.
+32. Press numpad `+`, numpad `-`, regular `+`, and regular `-` and confirm simulation speed steps through the preset values.
+33. Press Escape and confirm the app closes immediately.
+34. Hover a basin and confirm the label includes capacity percentage.
+35. Collapse a selected-agent panel category, let the simulation refresh, and confirm it stays collapsed.
+36. Confirm the selected-agent panel shows `Needs` first.
+37. Confirm vision cones are outline-only and clicking inside a cone selects that agent.
+38. Start a hunt with no visible pig and confirm the hunter searches instead of immediately chasing a hidden nearest pig.
+39. Let a visible target leave the cone and confirm the hunter investigates the last seen position before forgetting it and returning to search.
+40. Open `RunBlock0ASmoke.exe`.
+41. The script initializes the Visual Studio C++ toolchain.
+42. It compiles `tests/block0a_smoke.cpp` and `src/modeler/sim/LayoutMarkers.cpp`.
+43. It runs the produced smoke test.
+44. The smoke test creates one zone, one location, and one wall.
+45. It asserts the summary counts and prints the Block 0A validation message.
 
 ## Verified
 
@@ -361,4 +369,4 @@ The native editor should open locally through the desktop shortcut or `ModelerLa
 
 Block 0B must add real validation and baked runtime layout data, still without Unreal dependencies.
 
-Pathfinding, faction mirroring for Ottoman agents, combat, needs, perception, orders, final graphics, animation logic, persistent runtime saves, and Unreal integration still belong to later blocks.
+Pathfinding, faction mirroring for Ottoman agents, orders, final graphics, persistent runtime saves, and Unreal integration still belong to later blocks. Current needs, perception, resource, hunting, and provide systems are prototype-grade and should stay modular while they mature.

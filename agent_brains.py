@@ -23,11 +23,14 @@ ATTACK_INTERACTION_EXTRA = 14.0
 ATTACK_INTERACTION_RADIUS_MIN = 76.0
 ATTACK_TARGET_RADIUS_CAP = 80.0
 WATER_INTERACTION_RADIUS = 72.0
+PROVIDE_INTERACTION_EXTRA = 12.0
+PROVIDE_INTERACTION_RADIUS_MIN = 76.0
 SEARCH_WAYPOINT_RADIUS = 150.0
 SEARCH_LAST_SEEN_RADIUS = 130.0
 SEARCH_LAST_SEEN_TTL_SECONDS = 8.0
 SEARCH_ROUTE_STEP_RADIANS = 2.399963229728653
 RETURN_TO_FIRE_RADIUS_MULTIPLIER = 2.2
+WATER_OBJECTIVE = {"type": "nearest_water_source"}
 
 
 def normalize_brain_state(agent: dict) -> None:
@@ -40,6 +43,7 @@ def normalize_brain_state(agent: dict) -> None:
     inventory.setdefault("rawPig", False)
     inventory.setdefault("rawPigLabel", None)
     inventory.setdefault("rawPigBody", None)
+    inventory.setdefault("cookedFood", False)
     agent["inventory"] = inventory
     agent.setdefault("needCheckTimer", 0.0)
 
@@ -88,8 +92,8 @@ def maybe_assign_job(agent: dict, context: dict) -> None:
         agent["needCheckTimer"] = rng.uniform(NEED_CHECK_INTERVAL_MIN, NEED_CHECK_INTERVAL_MAX)
 
     if basin and sim_resources.is_basin_low(resources, basin["id"]):
-        if thirst <= PRE_LOGISTICS_NEED_THRESHOLD and sim_resources.basin_state(resources, basin["id"])["capacity"] > 0:
-            assign_drink_job(agent, basin, "basin low; drink before refilling")
+        if thirst <= PRE_LOGISTICS_NEED_THRESHOLD:
+            assign_drink_job(agent, layout, basin, "basin low; drink before refilling", refill_basin_after=True)
         elif should_abort_water_job_for_visible_jar(agent, context):
             finish_job(agent, "visible jar carrier already handling basin")
         else:
@@ -106,8 +110,11 @@ def maybe_assign_job(agent: dict, context: dict) -> None:
     if not check_now:
         return
 
-    if basin and should_satisfy_need(thirst, rng) and sim_resources.basin_state(resources, basin["id"])["capacity"] > 0:
-        assign_drink_job(agent, basin, "thirst probability check")
+    if maybe_assign_provide_job(agent, context, hunger, thirst):
+        return
+
+    if basin and should_satisfy_need(thirst, rng):
+        assign_drink_job(agent, layout, basin, "thirst probability check")
         return
 
     if fire and should_satisfy_need(hunger, rng) and sim_resources.fire_has_cooked_food(resources, fire["id"]):
@@ -123,18 +130,103 @@ def should_satisfy_need(value: float, rng: random.Random) -> bool:
     return rng.random() < pressure * pressure
 
 
-def should_abort_water_job_for_visible_jar(agent: dict, context: dict) -> bool:
-    if agent.get("inventory", {}).get("jar"):
+def maybe_assign_provide_job(agent: dict, context: dict, hunger: float, thirst: float) -> bool:
+    if hunger <= PRE_LOGISTICS_NEED_THRESHOLD or thirst <= PRE_LOGISTICS_NEED_THRESHOLD:
         return False
-    return bool(perception.visible_jar_carriers(agent, context.get("agents", [])))
+    layout = context["layout"]
+    resources = context["resources"]
+    visible_agents = perception.visible_targets(agent, context.get("agents", []))
+    visible_allies = [
+        target
+        for target in visible_agents
+        if target.get("faction") == agent.get("faction")
+        and target.get("health", {}).get("status") != "dead"
+    ]
+    visible_allies.sort(key=lambda target: distance(agent["position"], target["position"]))
+    for recipient in visible_allies:
+        recipient_needs = recipient.get("needs", {})
+        if float(recipient_needs.get("thirst", 100.0)) <= NEED_URGENT_THRESHOLD:
+            if assign_provide_job(agent, recipient, "thirst", context):
+                return True
+        if float(recipient_needs.get("hunger", 100.0)) <= NEED_URGENT_THRESHOLD:
+            fire = sim_resources.first_point(layout, "Fire", agent["faction"])
+            if fire and sim_resources.fire_has_cooked_food(resources, fire["id"]):
+                if assign_provide_job(agent, recipient, "hunger", context):
+                    return True
+    return False
 
 
-def assign_drink_job(agent: dict, basin: dict, reason: str) -> None:
+def should_abort_water_job_for_visible_jar(agent: dict, context: dict, job: dict | None = None) -> bool:
+    if not visible_basin_refill_jar_carriers(agent, context):
+        return False
+    if not agent.get("inventory", {}).get("jar"):
+        return True
+    return should_abandon_after_jar_pickup(agent, context, job or agent.get("job"))
+
+
+def visible_basin_refill_jar_carriers(agent: dict, context: dict) -> list[dict]:
+    carriers = []
+    for carrier in perception.visible_jar_carriers(agent, context.get("agents", [])):
+        if carrier.get("faction") != agent.get("faction"):
+            continue
+        if is_basin_refill_jar_carrier(carrier):
+            carriers.append(carrier)
+    return carriers
+
+
+def is_basin_refill_jar_carrier(carrier: dict) -> bool:
+    job = carrier.get("job")
+    if not isinstance(job, dict):
+        return False
+    if not carrier.get("inventory", {}).get("jar"):
+        return False
+    if job.get("type") != "fetch_water" or job.get("purpose", "fill_basin") != "fill_basin":
+        return False
+    return job.get("phase") in {"to_water", "to_basin"}
+
+
+def should_abandon_after_jar_pickup(agent: dict, context: dict, job: dict | None) -> bool:
+    if not isinstance(job, dict):
+        return False
+    if job.get("type") != "fetch_water" or job.get("purpose", "fill_basin") != "fill_basin":
+        return False
+    if job.get("phase") != "to_water":
+        return False
+    jar_pickup_position = job.get("jarPickupPosition")
+    if not isinstance(jar_pickup_position, dict):
+        return False
+    water_distance = current_objective_distance(context, agent["position"], water_objective_for_job(job))
+    if water_distance is None:
+        return False
+    distance_to_jar_source = distance(agent["position"], jar_pickup_position)
+    return distance_to_jar_source <= water_distance
+
+
+def assign_drink_job(
+    agent: dict,
+    layout: dict,
+    basin: dict,
+    reason: str,
+    *,
+    refill_basin_after: bool = False,
+) -> None:
+    jar_location = sim_resources.first_point(layout, "JarLocation", agent["faction"])
+    water_query = sim_resources.distance_to_objective(
+        layout,
+        jar_location["position"] if jar_location else agent["position"],
+        WATER_OBJECTIVE,
+    )
+    water_position = water_query["target"]["position"] if water_query.get("target") else None
     agent["job"] = {
-        "type": "drink",
+        "type": "drink_water",
+        "phase": "to_jar" if jar_location else "to_water",
         "basinId": basin["id"],
+        "jarLocationId": jar_location["id"] if jar_location else None,
+        "waterObjective": dict(WATER_OBJECTIVE),
+        "waterPosition": water_position,
+        "refillBasinAfterDrink": bool(refill_basin_after),
     }
-    agent["intent"] = {"action": "go_to", "target": basin["label"], "reason": reason}
+    agent["intent"] = {"action": "go_to", "target": jar_location["label"] if jar_location else "Water source", "reason": reason}
 
 
 def assign_eat_job(agent: dict, fire: dict, reason: str) -> None:
@@ -147,16 +239,61 @@ def assign_eat_job(agent: dict, fire: dict, reason: str) -> None:
 
 def assign_water_job(agent: dict, layout: dict, basin: dict) -> None:
     jar_location = sim_resources.first_point(layout, "JarLocation", agent["faction"])
-    water_position = sim_resources.nearest_water_source_position(layout, basin["position"])
+    water_origin = jar_location["position"] if jar_location else agent["position"]
+    water_query = sim_resources.distance_to_objective(layout, water_origin, WATER_OBJECTIVE)
+    water_position = water_query["target"]["position"] if water_query.get("target") else None
     agent["job"] = {
         "type": "fetch_water",
+        "purpose": "fill_basin",
         "phase": "to_jar" if jar_location else "to_water",
         "basinId": basin["id"],
         "jarLocationId": jar_location["id"] if jar_location else None,
+        "waterObjective": dict(WATER_OBJECTIVE),
         "waterPosition": water_position,
+        "waterSourceDistanceFromJar": water_query.get("distance"),
         "trips": 0,
     }
     agent["intent"] = {"action": "go_to", "target": jar_location["label"] if jar_location else "Water", "reason": "basin below 20%"}
+
+
+def assign_provide_job(agent: dict, recipient: dict, need: str, context: dict) -> bool:
+    layout = context["layout"]
+    if need == "thirst":
+        jar_location = sim_resources.first_point(layout, "JarLocation", agent["faction"])
+        water_origin = jar_location["position"] if jar_location else agent["position"]
+        water_query = sim_resources.distance_to_objective(layout, water_origin, WATER_OBJECTIVE)
+        if water_query.get("target") is None:
+            return False
+        agent["job"] = {
+            "type": "provide",
+            "provide": "drink",
+            "purpose": "provide_drink",
+            "phase": "to_jar" if jar_location else "to_water",
+            "recipientId": recipient["id"],
+            "jarLocationId": jar_location["id"] if jar_location else None,
+            "waterObjective": dict(WATER_OBJECTIVE),
+            "waterPosition": water_query["target"]["position"],
+            "waterSourceDistanceFromJar": water_query.get("distance"),
+        }
+        agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "ally is thirsty"}
+        return True
+
+    if need == "hunger":
+        fire = sim_resources.first_point(layout, "Fire", agent["faction"])
+        if fire is None or not sim_resources.fire_has_cooked_food(context["resources"], fire["id"]):
+            return False
+        agent["job"] = {
+            "type": "provide",
+            "provide": "eat",
+            "purpose": "provide_food",
+            "phase": "to_fire",
+            "recipientId": recipient["id"],
+            "fireId": fire["id"],
+        }
+        agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "ally is hungry"}
+        return True
+
+    return False
 
 
 def assign_hunt_job(agent: dict, layout: dict, resources: dict, rng: random.Random, fire: dict) -> None:
@@ -263,12 +400,14 @@ def assign_dead_pig_pickup_job(
 
 def advance_job(agent: dict, dt: float, context: dict) -> bool:
     job_type = agent["job"].get("type")
-    if job_type == "drink":
+    if job_type in {"drink", "drink_water"}:
         return advance_drink_job(agent, dt, context)
     if job_type == "eat":
         return advance_eat_job(agent, dt, context)
     if job_type == "fetch_water":
         return advance_water_job(agent, dt, context)
+    if job_type == "provide":
+        return advance_provide_job(agent, dt, context)
     if job_type in {"hunt_food", "hunt_pig"}:
         return advance_hunt_job(agent, dt, context)
     agent["job"] = None
@@ -276,24 +415,53 @@ def advance_job(agent: dict, dt: float, context: dict) -> bool:
 
 
 def advance_drink_job(agent: dict, dt: float, context: dict) -> bool:
-    basin = sim_resources.point_by_id(context["layout"], agent["job"].get("basinId"))
+    layout = context["layout"]
+    resources = context["resources"]
+    job = normalize_drink_job(agent, context)
+    basin = sim_resources.point_by_id(layout, job.get("basinId"))
+    jar_location = sim_resources.point_by_id(layout, job.get("jarLocationId"))
     if basin is None:
         agent["job"] = None
         return False
-    if not at_point(agent, basin):
-        agent["intent"] = {"action": "go_to", "target": basin["label"], "reason": "drink from basin"}
-        return move_towards(agent, basin["position"], dt, context)
-    consumed = sim_resources.drink_from_basin(context["resources"], basin["id"])
-    if consumed > 0.0:
+
+    phase = job.get("phase")
+    if phase == "to_jar":
+        if jar_location is not None and not at_point(agent, jar_location):
+            agent["intent"] = {"action": "go_to", "target": jar_location["label"], "reason": "pick up jar to drink"}
+            return move_towards(agent, jar_location["position"], dt, context)
+        pick_up_jar(agent, context, job, jar_location or basin)
+        job["phase"] = "to_water"
+        return True
+
+    if phase == "to_water":
+        water_target = current_water_target(context, job, agent["position"])
+        if water_target is None:
+            return_or_finish_jar_job(agent, context, job, "no water source available")
+            return False
+        if not at_position(agent, water_target["position"], WATER_INTERACTION_RADIUS):
+            agent["intent"] = {"action": "go_to", "target": water_target["label"], "reason": "fill jar to drink"}
+            return move_towards(agent, water_target["position"], dt, context)
+        fill_jar(agent, context, job, water_target)
+        job["phase"] = "drink_from_jar"
+        return True
+
+    if phase == "drink_from_jar":
         agent["needs"]["thirst"] = clamp(agent["needs"]["thirst"] + sim_resources.WATER_THIRST_RESTORE, 0.0, 100.0)
-        emit_interaction(context, agent, "drink", basin, "Basin")
-    if sim_resources.is_basin_low(context["resources"], basin["id"]):
-        if should_abort_water_job_for_visible_jar(agent, context):
-            finish_job(agent, "visible jar carrier already handling basin")
+        agent["inventory"]["jarFilled"] = False
+        emit_interaction(context, agent, "drink", {"label": "Jar", "position": agent["position"]}, "Jar")
+        if job.get("refillBasinAfterDrink") and sim_resources.is_basin_low(resources, basin["id"]):
+            if should_abort_water_job_for_visible_jar(agent, context, job):
+                return_or_finish_jar_job(agent, context, job, "visible jar carrier already handling basin")
+            else:
+                convert_drink_job_to_basin_refill(agent, context, job, basin, jar_location)
         else:
-            assign_water_job(agent, context["layout"], basin)
-    else:
-        finish_job(agent, "drank from basin")
+            return_or_finish_jar_job(agent, context, job, "drank from jar")
+        return True
+
+    if phase == "return_jar":
+        return return_or_finish_jar_job(agent, context, job, job.get("returnReason", "drank from jar"))
+
+    return_or_finish_jar_job(agent, context, job, "drink job complete")
     return True
 
 
@@ -327,31 +495,27 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
         return False
 
     phase = job.get("phase")
-    if phase in {"to_jar", "to_water"} and should_abort_water_job_for_visible_jar(agent, context):
-        finish_job(agent, "visible jar carrier already handling basin")
+    if phase in {"to_jar", "to_water"} and should_abort_water_job_for_visible_jar(agent, context, job):
+        return_or_finish_jar_job(agent, context, job, "visible jar carrier already handling basin")
         return True
 
     if phase == "to_jar":
         if jar_location is not None and not at_point(agent, jar_location):
             agent["intent"] = {"action": "go_to", "target": jar_location["label"], "reason": "pick up jar"}
             return move_towards(agent, jar_location["position"], dt, context)
-        agent["inventory"]["jar"] = True
-        agent["inventory"]["jarFilled"] = False
-        emit_interaction(context, agent, "pick_up_jar", jar_location or basin, "Jar")
+        pick_up_jar(agent, context, job, jar_location or basin)
         job["phase"] = "to_water"
         return True
 
     if phase == "to_water":
-        water_position = job.get("waterPosition") or sim_resources.nearest_water_source_position(layout, basin["position"])
-        if water_position is None:
-            finish_job(agent, "no water source available")
+        water_target = current_water_target(context, job, agent["position"])
+        if water_target is None:
+            return_or_finish_jar_job(agent, context, job, "no water source available")
             return False
-        if not at_position(agent, water_position, WATER_INTERACTION_RADIUS):
-            agent["intent"] = {"action": "go_to", "target": "Water source", "reason": "fill jar"}
-            return move_towards(agent, water_position, dt, context)
-        agent["inventory"]["jar"] = True
-        agent["inventory"]["jarFilled"] = True
-        emit_interaction(context, agent, "fill_jar", {"label": "Water source", "position": water_position}, "Water")
+        if not at_position(agent, water_target["position"], WATER_INTERACTION_RADIUS):
+            agent["intent"] = {"action": "go_to", "target": water_target["label"], "reason": "fill jar for basin"}
+            return move_towards(agent, water_target["position"], dt, context)
+        fill_jar(agent, context, job, water_target)
         job["phase"] = "to_basin"
         return True
 
@@ -372,18 +536,247 @@ def advance_water_job(agent: dict, dt: float, context: dict) -> bool:
 
     if phase == "return_jar":
         if jar_location is not None and not at_point(agent, jar_location):
-            agent["intent"] = {"action": "go_to", "target": jar_location["label"], "reason": "drop off jar"}
+            agent["intent"] = {"action": "go_to", "target": jar_location["label"], "reason": job.get("returnReason", "drop off jar")}
             return move_towards(agent, jar_location["position"], dt, context)
         agent["inventory"]["jar"] = False
         agent["inventory"]["jarFilled"] = False
         emit_interaction(context, agent, "drop_jar", jar_location or basin, "Jar")
-        finish_job(agent, "water job complete")
+        finish_job(agent, job.get("returnReason", "water job complete"))
         return True
 
     agent["inventory"]["jar"] = False
     agent["inventory"]["jarFilled"] = False
     finish_job(agent, "water job complete")
     return True
+
+
+def advance_provide_job(agent: dict, dt: float, context: dict) -> bool:
+    job = agent["job"]
+    recipient = agent_by_id(context.get("agents", []), job.get("recipientId"))
+    if recipient is None or recipient.get("health", {}).get("status") == "dead":
+        if agent.get("inventory", {}).get("jar"):
+            return return_or_finish_jar_job(agent, context, job, "recipient unavailable")
+        clear_carried_cooked_food(agent)
+        finish_job(agent, "recipient unavailable")
+        return True
+
+    if job.get("provide") == "drink":
+        return advance_provide_drink_job(agent, recipient, dt, context, job)
+    if job.get("provide") == "eat":
+        return advance_provide_food_job(agent, recipient, dt, context, job)
+
+    finish_job(agent, "unknown provide job")
+    return False
+
+
+def advance_provide_drink_job(agent: dict, recipient: dict, dt: float, context: dict, job: dict) -> bool:
+    layout = context["layout"]
+    jar_location = sim_resources.point_by_id(layout, job.get("jarLocationId"))
+    phase = job.get("phase")
+
+    if phase == "to_jar":
+        if jar_location is not None and not at_point(agent, jar_location):
+            agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "pick up jar"}
+            return move_towards(agent, jar_location["position"], dt, context)
+        pick_up_jar(agent, context, job, jar_location or recipient)
+        job["phase"] = "to_water"
+        return True
+
+    if phase == "to_water":
+        water_target = current_water_target(context, job, agent["position"])
+        if water_target is None:
+            return return_or_finish_jar_job(agent, context, job, "no water source available")
+        if not at_position(agent, water_target["position"], WATER_INTERACTION_RADIUS):
+            agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "fill jar for ally"}
+            return move_towards(agent, water_target["position"], dt, context)
+        fill_jar(agent, context, job, water_target)
+        job["phase"] = "to_recipient"
+        return True
+
+    if phase == "to_recipient":
+        if not at_agent(agent, recipient):
+            agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "bring water"}
+            return move_towards(agent, recipient["position"], dt, context)
+        if agent["inventory"].get("jarFilled"):
+            recipient["needs"]["thirst"] = clamp(recipient["needs"]["thirst"] + sim_resources.WATER_THIRST_RESTORE, 0.0, 100.0)
+            agent["inventory"]["jarFilled"] = False
+            emit_interaction(context, agent, "provide_drink", recipient, "Agent")
+        job["phase"] = "return_jar"
+        job["returnReason"] = "provided water"
+        return True
+
+    if phase == "return_jar":
+        return return_or_finish_jar_job(agent, context, job, job.get("returnReason", "provided water"))
+
+    return return_or_finish_jar_job(agent, context, job, "provide drink complete")
+
+
+def advance_provide_food_job(agent: dict, recipient: dict, dt: float, context: dict, job: dict) -> bool:
+    fire = sim_resources.point_by_id(context["layout"], job.get("fireId"))
+    if fire is None:
+        clear_carried_cooked_food(agent)
+        finish_job(agent, "no fire available")
+        return False
+
+    phase = job.get("phase")
+    if phase == "to_fire":
+        if not at_point(agent, fire):
+            agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "pick up cooked food"}
+            return move_towards(agent, fire["position"], dt, context)
+        taken = sim_resources.eat_cooked_food(context["resources"], fire["id"])
+        if taken <= 0.0:
+            finish_job(agent, "no cooked food available")
+            return True
+        agent["inventory"]["cookedFood"] = True
+        emit_interaction(context, agent, "pick_up_food", fire, "Fire")
+        job["phase"] = "to_recipient"
+        return True
+
+    if phase == "to_recipient":
+        if not at_agent(agent, recipient):
+            agent["intent"] = {"action": "provide", "target": recipient["label"], "reason": "bring cooked food"}
+            return move_towards(agent, recipient["position"], dt, context)
+        if agent["inventory"].get("cookedFood"):
+            recipient["needs"]["hunger"] = clamp(recipient["needs"]["hunger"] + sim_resources.FOOD_HUNGER_RESTORE, 0.0, 100.0)
+            clear_carried_cooked_food(agent)
+            emit_interaction(context, agent, "provide_food", recipient, "Agent")
+        finish_job(agent, "provided food")
+        return True
+
+    clear_carried_cooked_food(agent)
+    finish_job(agent, "provide food complete")
+    return True
+
+
+def normalize_drink_job(agent: dict, context: dict) -> dict:
+    job = agent["job"]
+    layout = context["layout"]
+    basin = sim_resources.point_by_id(layout, job.get("basinId")) or sim_resources.first_point(layout, "Basin", agent["faction"])
+    jar_location = sim_resources.point_by_id(layout, job.get("jarLocationId")) or sim_resources.first_point(layout, "JarLocation", agent["faction"])
+    if basin is not None:
+        job["basinId"] = basin["id"]
+    if jar_location is not None:
+        job["jarLocationId"] = jar_location["id"]
+    job["type"] = "drink_water"
+    job.setdefault("phase", "to_jar" if jar_location is not None and not agent.get("inventory", {}).get("jar") else "to_water")
+    job.setdefault("waterObjective", dict(WATER_OBJECTIVE))
+    if not isinstance(job.get("waterPosition"), dict):
+        water_origin = jar_location["position"] if jar_location is not None else agent["position"]
+        water_target = current_water_target(context, job, water_origin)
+        if water_target is not None:
+            job["waterPosition"] = water_target["position"]
+    return job
+
+
+def convert_drink_job_to_basin_refill(
+    agent: dict,
+    context: dict,
+    job: dict,
+    basin: dict,
+    jar_location: dict | None,
+) -> None:
+    jar_pickup_position = job.get("jarPickupPosition")
+    water_source_distance = job.get("waterSourceDistanceFromJar")
+    water_target = current_water_target(context, job, agent["position"])
+    job.clear()
+    job.update(
+        {
+            "type": "fetch_water",
+            "purpose": "fill_basin",
+            "phase": "to_water",
+            "basinId": basin["id"],
+            "jarLocationId": jar_location["id"] if jar_location is not None else None,
+            "waterObjective": dict(WATER_OBJECTIVE),
+            "waterPosition": water_target["position"] if water_target is not None else None,
+            "waterSourceDistanceFromJar": water_source_distance,
+            "jarPickupPosition": jar_pickup_position if isinstance(jar_pickup_position, dict) else dict(agent["position"]),
+            "trips": 0,
+        }
+    )
+    agent["intent"] = {"action": "go_to", "target": "Water source", "reason": "refill basin after drinking"}
+
+
+def pick_up_jar(agent: dict, context: dict, job: dict, source: dict) -> None:
+    agent["inventory"]["jar"] = True
+    agent["inventory"]["jarFilled"] = False
+    remember_jar_pickup_metrics(agent, context, job)
+    emit_interaction(context, agent, "pick_up_jar", source, "Jar")
+
+
+def fill_jar(agent: dict, context: dict, job: dict, water_target: dict) -> None:
+    agent["inventory"]["jar"] = True
+    agent["inventory"]["jarFilled"] = True
+    job["waterPosition"] = dict(water_target["position"])
+    emit_interaction(context, agent, "fill_jar", water_target, "Water")
+
+
+def remember_jar_pickup_metrics(agent: dict, context: dict, job: dict) -> None:
+    pickup_position = dict(agent["position"])
+    job["jarPickupPosition"] = pickup_position
+    water_distance = current_objective_distance(context, pickup_position, water_objective_for_job(job))
+    if water_distance is not None:
+        job["waterSourceDistanceFromJar"] = water_distance
+
+
+def return_or_finish_jar_job(agent: dict, context: dict, job: dict, reason: str) -> bool:
+    jar_location = sim_resources.point_by_id(context["layout"], job.get("jarLocationId"))
+    if agent.get("inventory", {}).get("jar") and jar_location is not None:
+        if not at_point(agent, jar_location):
+            job["phase"] = "return_jar"
+            job["returnReason"] = reason
+            agent["intent"] = {"action": "go_to", "target": jar_location["label"], "reason": reason}
+            return move_towards(agent, jar_location["position"], float(context.get("dt", 0.0)), context)
+        agent["inventory"]["jar"] = False
+        agent["inventory"]["jarFilled"] = False
+        emit_interaction(context, agent, "drop_jar", jar_location, "Jar")
+    else:
+        agent["inventory"]["jar"] = False
+        agent["inventory"]["jarFilled"] = False
+    finish_job(agent, reason)
+    return True
+
+
+def current_water_target(context: dict, job: dict, origin: dict) -> dict | None:
+    query = sim_resources.distance_to_objective(
+        context["layout"],
+        origin,
+        water_objective_for_job(job),
+        pathfinder=context.get("pathfinder"),
+    )
+    target = query.get("target")
+    if target is not None:
+        job["waterPosition"] = dict(target["position"])
+        job["lastDistanceToWater"] = query.get("distance")
+        return target
+    fallback_position = job.get("waterPosition")
+    if isinstance(fallback_position, dict):
+        return {"kind": "water_source", "id": None, "label": "Water source", "position": fallback_position}
+    return None
+
+
+def current_objective_distance(context: dict, origin: dict, objective: dict) -> float | None:
+    query = sim_resources.distance_to_objective(
+        context["layout"],
+        origin,
+        objective,
+        pathfinder=context.get("pathfinder"),
+    )
+    raw_distance = query.get("distance")
+    return None if raw_distance is None else float(raw_distance)
+
+
+def water_objective_for_job(job: dict) -> dict:
+    objective = job.get("waterObjective")
+    return dict(objective) if isinstance(objective, dict) else dict(WATER_OBJECTIVE)
+
+
+def agent_by_id(agents: list[dict], agent_id: str | None) -> dict | None:
+    if agent_id is None:
+        return None
+    for agent in agents:
+        if agent.get("id") == agent_id:
+            return agent
+    return None
 
 
 def advance_hunt_job(agent: dict, dt: float, context: dict) -> bool:
@@ -807,6 +1200,10 @@ def at_point(agent: dict, point: dict) -> bool:
     return at_position(agent, point["position"], point_interaction_radius(agent, point))
 
 
+def at_agent(agent: dict, target_agent: dict) -> bool:
+    return at_position(agent, target_agent["position"], agent_interaction_radius(agent, target_agent))
+
+
 def at_position(agent: dict, position: dict, radius: float) -> bool:
     return distance(agent["position"], position) <= radius
 
@@ -829,6 +1226,15 @@ def attack_interaction_radius(agent: dict, target: dict) -> float:
     )
 
 
+def agent_interaction_radius(agent: dict, target_agent: dict) -> float:
+    return max(
+        PROVIDE_INTERACTION_RADIUS_MIN,
+        float(agent.get("radius", 90.0)) * 0.35
+        + float(target_agent.get("radius", 90.0)) * 0.35
+        + PROVIDE_INTERACTION_EXTRA,
+    )
+
+
 def carry_dead_pig(agent: dict, dead_pig: dict) -> None:
     inventory = agent["inventory"]
     inventory["rawPig"] = True
@@ -841,6 +1247,10 @@ def clear_carried_raw_pig(agent: dict) -> None:
     inventory["rawPig"] = False
     inventory["rawPigLabel"] = None
     inventory["rawPigBody"] = None
+
+
+def clear_carried_cooked_food(agent: dict) -> None:
+    agent["inventory"]["cookedFood"] = False
 
 
 def move_towards(agent: dict, target: dict, dt: float, context: dict) -> bool:
